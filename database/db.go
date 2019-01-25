@@ -1,4 +1,4 @@
-package db
+package database
 
 import (
 	"fmt"
@@ -12,8 +12,9 @@ import (
 
 // Client 是一个具体的客户端身份对象
 type Client struct {
-	ID   int64
-	Name string
+	ID       int64
+	Name     string
+	ServerID string
 	// Extra 额外信息
 	Extra string
 }
