@@ -23,8 +23,13 @@ func main() {
 		return
 	}
 	// new server
-	hub := NewHub(cfg)
+	hub, err := NewHub(cfg)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
+	hub.run()
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)

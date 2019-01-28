@@ -10,3 +10,11 @@ type ClientPeer struct {
 	conn   *websocket.Conn
 	client *database.Client
 }
+
+// NewClientPeer create ClientPeer
+func NewClientPeer(conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+	return &ClientPeer{
+		conn:   conn,
+		client: client,
+	}, nil
+}
