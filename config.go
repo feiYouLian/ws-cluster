@@ -22,6 +22,7 @@ type Config struct {
 	ServerID     string `description:"server id"`
 	ServerAddr   string
 	ServerListen int
+	ServerSecret string
 	RedisIP      string `description:"redis ip"`
 	RedisPort    int
 	MysqlIP      string
@@ -43,6 +44,7 @@ func loadConfig() (*Config, error) {
 	}
 	config.ServerID = section.Key("id").String()
 	config.ServerAddr = section.Key("addr").String()
+	config.ServerSecret = section.Key("secret").String()
 	config.ServerListen = section.Key("listen").MustInt(6379)
 
 	section = cfg.Section("redis")

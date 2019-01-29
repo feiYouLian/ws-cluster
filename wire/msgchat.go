@@ -11,12 +11,11 @@ const (
 
 // Msgchat 单聊消息
 type Msgchat struct {
-	ID      uint64
-	From    uint64
-	To      uint64
-	Type    uint8 // 1: chat 2:group
-	MsgType uint8 // 1: text 2: image
-	Text    string
+	ID   uint64
+	From uint64
+	To   uint64
+	Type uint8 // 1: text 2: image
+	Text string
 }
 
 // Decode Decode

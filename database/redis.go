@@ -7,6 +7,11 @@ type RedisClientCache struct {
 	client *redis.Client
 }
 
+// NewRedisClientCache NewRedisClientCache
+func NewRedisClientCache(client *redis.Client) *RedisClientCache {
+	return &RedisClientCache{client: client}
+}
+
 // AddClient AddClient
 func (c *RedisClientCache) AddClient(client *Client) error {
 	return nil
@@ -32,6 +37,11 @@ type RedisServerCache struct {
 	client *redis.Client
 }
 
+// NewRedisServerCache NewRedisServerCache
+func NewRedisServerCache(client *redis.Client) *RedisServerCache {
+	return &RedisServerCache{client: client}
+}
+
 // AddServer AddServer
 func (c *RedisServerCache) AddServer(server *Server) error {
 	return nil
@@ -50,4 +60,9 @@ func (c *RedisServerCache) DelServer(ID string) error {
 // GetServers GetServers
 func (c *RedisServerCache) GetServers() ([]Server, error) {
 	return nil, nil
+}
+
+// RedisGroupCache RedisGroupCache
+type RedisGroupCache struct {
+	client *redis.Client
 }

@@ -19,16 +19,17 @@ type Client struct {
 	Extra string
 }
 
-// Group 代表一个群，发往这个群的消息会转发给所有在此群中的用户。
-// 聊天室不保存
-type Group struct {
-	ID           uint64
-	Name         string
-	MaxClientNum uint32
-	CurClientNum uint32
-	Creator      uint64
-	Owner        uint64
-}
+// // Group 代表一个群，发往这个群的消息会转发给所有在此群中的用户。
+// // 聊天室不保存
+// type Group struct {
+// 	ID           uint64
+// 	Name         string
+// 	MaxClientNum uint32
+// 	CurClientNum uint32
+// 	Creator      uint64
+// 	Owner        uint64
+// 	Clients      []uint64
+// }
 
 // Server 服务器对象
 type Server struct {

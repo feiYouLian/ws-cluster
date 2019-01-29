@@ -16,6 +16,13 @@ type ServerCache interface {
 	GetServers() ([]Server, error)
 }
 
+// GroupCache GroupCache
+type GroupCache interface {
+	Join(group string, clientID uint64)
+	Leave(group string, clientID uint64)
+	GetGroupMembers(group string) []uint64
+}
+
 // Cache 定义了缓存层接口，缓存层用于保护用户会话及服务列表等数据
 type Cache struct {
 	ServerCache ServerCache

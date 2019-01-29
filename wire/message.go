@@ -10,6 +10,8 @@ const (
 	MsgTypeChat = uint8(3)
 	// MsgTypeChatAck ack
 	MsgTypeChatAck = uint8(4)
+	// MsgTypeGroup group
+	MsgTypeGroup = uint8(5)
 )
 
 // Message 定义了消息接口，消息必须有序列化和反序列化方法

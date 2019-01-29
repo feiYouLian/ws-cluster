@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/ws-cluster/wire"
@@ -15,8 +16,8 @@ import (
 )
 
 const (
-	clientID = byte(0)
-	serverID = byte(1)
+	clientFlag = byte(0)
+	serverFlag = byte(1)
 )
 
 // Peer 代表一个节点，可以是 client,server peer
@@ -28,8 +29,11 @@ type Peer interface {
 // Hub 是一个中转中心，所有 clientPeer
 type Hub struct {
 	upgrader    *websocket.Upgrader
-	config      Config
-	clentCache  database.ClientCache
+	config      *Config
+	clientCache *database.ClientCache
+	groupCache  *database.GroupCache
+	serverCache *database.ServerCache
+
 	clientPeers map[uint64]*ClientPeer
 	serverPeers map[string]*ServerPeer
 
@@ -49,7 +53,13 @@ func NewHub(config *Config) (*Hub, error) {
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
-	hub := &Hub{upgrader: upgrader}
+	redis := database.InitRedis(config.RedisIP)
+
+	hub := &Hub{
+		upgrader:    upgrader,
+		config:      config,
+		clientCache: database.New,
+	}
 
 	// http.HandleFunc("/", serveHome)
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
@@ -106,12 +116,67 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	ID := r.Header.Get("id")
+	IP := r.Header.Get("ip")
+	Port, _ := strconv.Atoi(r.Header.Get("port"))
 
+	conn, err := hub.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	serverPeer := NewServerPeer(conn, &database.Server{
+		ID:   ID,
+		IP:   IP,
+		Port: Port,
+	})
+
+	hub.registServer <- serverPeer
 }
 
 func (h *Hub) run() {
+	// 连接到其它服务器节点
+	h.initServer()
+
 	go h.handlePeer()
 	go h.handleMessage()
+
+}
+
+func (h *Hub) initServer() error {
+	servers, err := h.serverCache.GetServers()
+	if err != nil {
+		return err
+	}
+	serverSelf := database.Server{
+		ID:   h.config.ServerID,
+		IP:   GetOutboundIP().String(),
+		Port: h.config.ServerListen,
+	}
+
+	// 主动连接到其它节点
+	for _, server := range servers {
+		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
+		log.Printf("connecting to %s", u.String())
+
+		header := http.Header{}
+		header.Add("id", serverSelf.ID)
+		header.Add("ip", serverSelf.IP)
+		header.Add("port", strconv.Itoa(serverSelf.Port))
+
+		conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+		if err != nil {
+			log.Fatal("dial:", err)
+		}
+		serverPeer := NewServerPeer(conn, &server)
+
+		h.registServer <- serverPeer
+	}
+
+	// 记录到远程缓存中
+	h.serverCache.AddServer(&serverSelf)
+
+	return nil
 }
 
 func (h *Hub) handlePeer() {
@@ -151,20 +216,35 @@ func (h *Hub) handleMessage() {
 	for {
 		select {
 		case msg := <-h.message:
-			// from := msg[0]
+			from := msg[0]
 			message, err := wire.ReadMessage(bytes.NewReader(msg))
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
 			if message.Msgtype() == wire.MsgTypeChat {
-				h.saveMessage <- message
+				if from == clientFlag {
+					h.saveMessage <- message
+				}
 
 				chatMsg := message.(*wire.Msgchat)
-				// 判断消息是否需要转发到其它服务器
+				// 消息转发到其它服务器
 				h.handleChatMsgForwardToServers(chatMsg)
 				// 转发消息出去
+				h.handleChatMsgForwardToClients(chatMsg)
 
+			} else if message.Msgtype() == wire.MsgTypeChatAck {
+				msg := message.(*wire.MsgchatAck)
+				if client, ok := h.clientPeers[msg.To]; ok {
+					client.send <- message
+				} else {
+					// 读取目标client所在的服务器
+					client, _ := h.clentCache.GetClient(msg.To)
+					// 消息转发过去
+					if server, ok := h.serverPeers[client.ServerID]; ok {
+						server.send <- message
+					}
+				}
 			}
 
 		}
@@ -192,7 +272,12 @@ func (h *Hub) handleChatMsgForwardToServers(chatMsg *wire.Msgchat) {
 // 转发消息到客户端节点
 func (h *Hub) handleChatMsgForwardToClients(chatMsg *wire.Msgchat) {
 	if chatMsg.Type == wire.ChatTypeGroup {
-
+		group, _ := h.groupCache.GetGroup(chatMsg.To)
+		for _, to := range group.Clients {
+			if client, ok := h.clientPeers[to]; ok {
+				client.send <- chatMsg
+			}
+		}
 	} else if chatMsg.Type == wire.ChatTypeSingle {
 		if clientPeer, ok := h.clientPeers[chatMsg.To]; ok {
 			clientPeer.send <- chatMsg

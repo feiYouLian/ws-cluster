@@ -28,8 +28,8 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-
 	hub.run()
+
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
