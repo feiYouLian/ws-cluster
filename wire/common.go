@@ -15,36 +15,36 @@ var (
 	littleEndian = binary.LittleEndian
 )
 
-// ReadInt8 从 reader 中读取一个 int8
-func ReadInt8(r io.Reader) (int8, error) {
+// ReadUint8 从 reader 中读取一个 uint8
+func ReadUint8(r io.Reader) (uint8, error) {
 	var bytes = make([]byte, 1)
 	if _, err := io.ReadFull(r, bytes); err != nil {
 		return 0, err
 	}
-	return int8(bytes[0]), nil
+	return uint8(bytes[0]), nil
 }
 
-// ReadInt32 从 reader 中读取一个 int32
-func ReadInt32(r io.Reader) (int32, error) {
+// ReadUint32 从 reader 中读取一个 uint32
+func ReadUint32(r io.Reader) (uint32, error) {
 	var bytes = make([]byte, 4)
 	if _, err := io.ReadFull(r, bytes); err != nil {
 		return 0, err
 	}
-	return int32(littleEndian.Uint32(bytes)), nil
+	return littleEndian.Uint32(bytes), nil
 }
 
-// ReadInt64 从 reader 中读取一个 int64
-func ReadInt64(r io.Reader) (int64, error) {
+// ReadUint64 从 reader 中读取一个 uint64
+func ReadUint64(r io.Reader) (uint64, error) {
 	var bytes = make([]byte, 8)
 	if _, err := io.ReadFull(r, bytes); err != nil {
 		return 0, err
 	}
-	return int64(littleEndian.Uint64(bytes)), nil
+	return littleEndian.Uint64(bytes), nil
 }
 
 // ReadString 从 reader 中读取一个 string
 func ReadString(r io.Reader) (string, error) {
-	len, err := ReadInt32(r)
+	len, err := ReadUint32(r)
 	if err != nil {
 		return "", err
 	}
@@ -56,8 +56,8 @@ func ReadString(r io.Reader) (string, error) {
 	return string(buf), nil
 }
 
-// WriteInt8 写一个 int8到 writer 中
-func WriteInt8(w io.Writer, val int8) error {
+// WriteUint8 写一个 uint8到 writer 中
+func WriteUint8(w io.Writer, val uint8) error {
 	buf := []byte{byte(val)}
 	if _, err := w.Write(buf); err != nil {
 		return err
@@ -65,20 +65,20 @@ func WriteInt8(w io.Writer, val int8) error {
 	return nil
 }
 
-// WriteInt32 写一个 int32到 writer 中
-func WriteInt32(w io.Writer, val int32) error {
+// WriteUint32 写一个 int32到 writer 中
+func WriteUint32(w io.Writer, val uint32) error {
 	buf := make([]byte, 4)
-	littleEndian.PutUint32(buf, uint32(val))
+	littleEndian.PutUint32(buf, val)
 	if _, err := w.Write(buf); err != nil {
 		return err
 	}
 	return nil
 }
 
-// WriteInt64 写一个 int64到 writer 中
-func WriteInt64(w io.Writer, val int64) error {
+// WriteUint64 写一个 int64到 writer 中
+func WriteUint64(w io.Writer, val uint64) error {
 	buf := make([]byte, 8)
-	littleEndian.PutUint64(buf, uint64(val))
+	littleEndian.PutUint64(buf, val)
 	if _, err := w.Write(buf); err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func WriteInt64(w io.Writer, val int64) error {
 func WriteString(w io.Writer, str string) error {
 	slen := len(str)
 
-	if err := WriteInt32(w, int32(slen)); err != nil {
+	if err := WriteUint32(w, uint32(slen)); err != nil {
 		return err
 	}
 

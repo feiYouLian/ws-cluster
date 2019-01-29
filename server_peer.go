@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/gorilla/websocket"
 	"github.com/ws-cluster/database"
+	"github.com/ws-cluster/wire"
 )
 
 // ServerPeer 代表一个服务器节点，每个服务器节点都会建立与其它服务器节点的接连，
@@ -12,9 +13,5 @@ type ServerPeer struct {
 	ID     string
 	conn   *websocket.Conn
 	server *database.Server
-}
-
-func NewServerPeer(config *Config) (*ServerPeer, error) {
-
-	return &ServerPeer{}, nil
+	send   chan wire.Message
 }

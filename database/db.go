@@ -12,7 +12,7 @@ import (
 
 // Client 是一个具体的客户端身份对象
 type Client struct {
-	ID       int64
+	ID       uint64
 	Name     string
 	ServerID string
 	// Extra 额外信息
@@ -22,12 +22,12 @@ type Client struct {
 // Group 代表一个群，发往这个群的消息会转发给所有在此群中的用户。
 // 聊天室不保存
 type Group struct {
-	ID           int64
+	ID           uint64
 	Name         string
 	MaxClientNum uint32
 	CurClientNum uint32
-	Creator      int64
-	Owner        int64
+	Creator      uint64
+	Owner        uint64
 }
 
 // Server 服务器对象

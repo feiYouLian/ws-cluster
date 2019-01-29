@@ -38,11 +38,20 @@ func TestReadString(t *testing.T) {
 		t.Error(str2)
 	}
 	fmt.Println(str2)
+
+	b1 := int8(-127)
+	fmt.Println(b1)
+
+	b2 := uint8(b1)
+	fmt.Println(b2)
+
+	b1 = int8(b2)
+	fmt.Println(b1)
 }
 
 func TestWriteInt8(t *testing.T) {
 	type args struct {
-		val int8
+		val uint8
 	}
 	tests := []struct {
 		name    string
@@ -56,7 +65,7 @@ func TestWriteInt8(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := &bytes.Buffer{}
-			if err := WriteInt8(w, tt.args.val); (err != nil) != tt.wantErr {
+			if err := WriteUint8(w, tt.args.val); (err != nil) != tt.wantErr {
 				t.Errorf("WriteInt8() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}

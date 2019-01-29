@@ -3,9 +3,9 @@ package database
 // ClientCache 定义了 client 缓存操作接口
 type ClientCache interface {
 	AddClient(client *Client) error
-	DelClient(ID int64) (int, error)
+	DelClient(ID uint64) (int, error)
 	DelAll(ServerID string) error
-	GetClient(ID int64) (*Client, error)
+	GetClient(ID uint64) (*Client, error)
 }
 
 // ServerCache 定义了服务器列表操作方法

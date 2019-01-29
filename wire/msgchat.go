@@ -2,28 +2,36 @@ package wire
 
 import "io"
 
+const (
+	// ChatTypeSingle 单聊
+	ChatTypeSingle = 1
+	// ChatTypeGroup 群聊
+	ChatTypeGroup = 2
+)
+
 // Msgchat 单聊消息
 type Msgchat struct {
-	ID   int64
-	From int64
-	To   int64
-	Type int8
-	Text string
+	ID      uint64
+	From    uint64
+	To      uint64
+	Type    uint8 // 1: chat 2:group
+	MsgType uint8 // 1: text 2: image
+	Text    string
 }
 
 // Decode Decode
 func (m *Msgchat) Decode(r io.Reader) error {
 	var err error
-	if m.ID, err = ReadInt64(r); err != nil {
+	if m.ID, err = ReadUint64(r); err != nil {
 		return err
 	}
-	if m.From, err = ReadInt64(r); err != nil {
+	if m.From, err = ReadUint64(r); err != nil {
 		return err
 	}
-	if m.To, err = ReadInt64(r); err != nil {
+	if m.To, err = ReadUint64(r); err != nil {
 		return err
 	}
-	if m.Type, err = ReadInt8(r); err != nil {
+	if m.Type, err = ReadUint8(r); err != nil {
 		return err
 	}
 	if m.Text, err = ReadString(r); err != nil {
@@ -36,16 +44,16 @@ func (m *Msgchat) Decode(r io.Reader) error {
 // Encode Encode
 func (m *Msgchat) Encode(w io.Writer) error {
 	var err error
-	if err = WriteInt64(w, m.ID); err != nil {
+	if err = WriteUint64(w, m.ID); err != nil {
 		return err
 	}
-	if err = WriteInt64(w, m.From); err != nil {
+	if err = WriteUint64(w, m.From); err != nil {
 		return err
 	}
-	if err = WriteInt64(w, m.To); err != nil {
+	if err = WriteUint64(w, m.To); err != nil {
 		return err
 	}
-	if err = WriteInt8(w, m.Type); err != nil {
+	if err = WriteUint8(w, m.Type); err != nil {
 		return err
 	}
 	if err = WriteString(w, m.Text); err != nil {
@@ -54,7 +62,7 @@ func (m *Msgchat) Encode(w io.Writer) error {
 	return nil
 }
 
-// Header 头信息
-func (m *Msgchat) Header() int32 {
-	return makeHeader(MsgTypeChat)
+// Msgtype 头信息
+func (m *Msgchat) Msgtype() uint8 {
+	return MsgTypeChat
 }
