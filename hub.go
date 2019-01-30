@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/ws-cluster/peer"
 	"github.com/ws-cluster/wire"
 
 	"github.com/ws-cluster/database"
@@ -20,10 +21,80 @@ const (
 	serverFlag = byte(1)
 )
 
-// Peer 代表一个节点，可以是 client,server peer
-type Peer interface {
-	From() uint8
-	Send() chan []byte
+// ServerPeer 代表一个服务器节点，每个服务器节点都会建立与其它服务器节点的接连，
+// 这个对象用于处理跨服务节点消息收发。
+type ServerPeer struct {
+	*peer.Peer
+	hub    *Hub
+	entity *database.Server
+}
+
+// OnMessage 接收消息
+func (p *ServerPeer) OnMessage(message []byte) error {
+	p.hub.message <- hubMessage{from: serverFlag, message: message}
+	return nil
+}
+
+// OnDisconnect 对方断开接连
+func (p *ServerPeer) OnDisconnect() error {
+	p.hub.unregistServer <- p
+
+	// 判断当前节点是否为主节点
+
+	// 如果是主节点，维护服务器列表
+
+	return nil
+}
+
+// ClientPeer 代表一个客户端节点，消息收发的处理逻辑
+type ClientPeer struct {
+	*peer.Peer
+	hub    *Hub
+	entity *database.Client
+}
+
+// OnMessage 接收消息
+func (p *ClientPeer) OnMessage(message []byte) error {
+	p.hub.message <- hubMessage{from: clientFlag, message: message}
+
+	return nil
+}
+
+// OnDisconnect 接连断开
+func (p *ClientPeer) OnDisconnect() error {
+	p.hub.unregistClient <- p
+	return nil
+}
+
+func newServerPeer(h *Hub, cfg *Config, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
+
+	serverPeer := &ServerPeer{
+		hub:    h,
+		entity: server,
+	}
+
+	peer := peer.NewPeer(&peer.Config{
+		Listeners: &peer.MessageListeners{
+			OnMessage:    serverPeer.OnMessage,
+			OnDisconnect: serverPeer.OnDisconnect,
+		},
+		MessageQueueLen: 50,
+	})
+
+	serverPeer.Peer = peer
+	serverPeer.SetConnection(conn)
+
+	return serverPeer, nil
+}
+
+func newClientPeer(h *Hub, cfg *Config, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+
+	return nil, nil
+}
+
+type hubMessage struct {
+	from    byte
+	message []byte
 }
 
 // Hub 是一个中转中心，所有 clientPeer
@@ -42,7 +113,7 @@ type Hub struct {
 	registServer   chan *ServerPeer
 	unregistServer chan *ServerPeer
 
-	message     chan []byte
+	message     chan hubMessage
 	saveMessage chan wire.Message
 }
 
@@ -56,9 +127,10 @@ func NewHub(config *Config) (*Hub, error) {
 	redis := database.InitRedis(config.RedisIP)
 
 	hub := &Hub{
-		upgrader:    upgrader,
-		config:      config,
-		clientCache: database.NewRedisClientCache(redis),
+		upgrader:     upgrader,
+		config:       config,
+		clientCache:  database.NewRedisClientCache(redis),
+		registClient: make(chan *ClientPeer, 1),
 	}
 
 	// http.HandleFunc("/", serveHome)
@@ -100,7 +172,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(clientID, 0, 64)
-	clientPeer, err := NewClientPeer(conn, &database.Client{
+	clientPeer, err := newClientPeer(hub.config, conn, &database.Client{
 		ID:   uint64(id),
 		Name: name,
 	})
@@ -125,11 +197,15 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	serverPeer := NewServerPeer(conn, &database.Server{
+	serverPeer, err := newServerPeer(hub.config, conn, &database.Server{
 		ID:   ID,
 		IP:   IP,
 		Port: Port,
 	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	hub.registServer <- serverPeer
 }
@@ -168,8 +244,11 @@ func (h *Hub) initServer() error {
 		if err != nil {
 			log.Fatal("dial:", err)
 		}
-		serverPeer := NewServerPeer(conn, &server)
-
+		serverPeer, err := newServerPeer(h.config, conn, &server)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
 		h.registServer <- serverPeer
 	}
 
@@ -183,32 +262,23 @@ func (h *Hub) handlePeer() {
 	for {
 		select {
 		case peer := <-h.registClient:
-			h.clientPeers[peer.client.ID] = peer
+			h.clientPeers[peer.entity.ID] = peer
 
 		case peer := <-h.unregistClient:
-			if _, ok := h.clientPeers[peer.client.ID]; ok {
-				delete(h.clientPeers, peer.client.ID)
-				close(peer.send)
+			if _, ok := h.clientPeers[peer.entity.ID]; ok {
+				delete(h.clientPeers, peer.entity.ID)
+				peer.Close()
 			}
 		case peer := <-h.registServer:
-			h.serverPeers[peer.server.ID] = peer
+			h.serverPeers[peer.entity.ID] = peer
 
 		case peer := <-h.unregistServer:
-			h.handlerServerUnregister(peer)
+			if _, ok := h.serverPeers[peer.entity.ID]; ok {
+				delete(h.serverPeers, peer.entity.ID)
+				peer.Close()
+			}
 		}
 	}
-}
-
-func (h *Hub) handlerServerUnregister(peer *ServerPeer) {
-	if _, ok := h.serverPeers[peer.server.ID]; ok {
-		delete(h.serverPeers, peer.server.ID)
-		close(peer.send)
-
-		// 判断当前节点是否为主节点
-
-		// 如果是主节点，维护服务器列表
-	}
-
 }
 
 // 处理消息转发
@@ -216,52 +286,40 @@ func (h *Hub) handleMessage() {
 	for {
 		select {
 		case msg := <-h.message:
-			from := msg[0]
-			message, err := wire.ReadMessage(bytes.NewReader(msg))
+			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			if message.Msgtype() == wire.MsgTypeChat {
-				if from == clientFlag {
-					h.saveMessage <- message
-				}
-				chatMsg := message.(*wire.Msgchat)
-				h.handleMsgForwardToClient(chatMsg, chatMsg.To)
-			} else if message.Msgtype() == wire.MsgTypeChatAck {
-				chatMsgAck := message.(*wire.MsgchatAck)
-				h.handleMsgForwardToClient(chatMsgAck, chatMsgAck.To)
-			} else if message.Msgtype() == wire.MsgTypeGroup {
-				// 如果消息是直接来源于 client。就转发到其它服务器
-				if from == clientFlag {
-					for _, serverpeer := range h.serverPeers {
-						serverpeer.send <- message
+			if header.Scope == wire.ScopeChat {
+				to, _ := header.Uint64To()
+				done := make(chan<- struct{})
+				if client, ok := h.clientPeers[to]; ok {
+					client.PushMessage(msg.message, done)
+				} else {
+					// 读取目标client所在的服务器
+					client, _ := h.clientCache.GetClient(to)
+					// 消息转发过去
+					if server, ok := h.serverPeers[client.ServerID]; ok {
+						server.PushMessage(msg.message, done)
 					}
 				}
-				msg := message.(*wire.Msggroup)
+			} else if header.Scope == wire.ScopeGroup {
+				group, _ := header.StringTo()
+				// 如果消息是直接来源于 client。就转发到其它服务器
+				if msg.from == clientFlag {
+					for _, serverpeer := range h.serverPeers {
+						serverpeer.PushMessage(msg.message, nil)
+					}
+				}
 				// 读取群用户列表。转发
-				clients := h.groupCache.GetGroupMembers(msg.Group)
+				clients := h.groupCache.GetGroupMembers(group)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
-						client.send <- message
+						client.PushMessage(msg.message, nil)
 					}
 				}
 			}
-
-		}
-	}
-}
-
-// 转发消息到客户端节点
-func (h *Hub) handleMsgForwardToClient(message wire.Message, to uint64) {
-	if client, ok := h.clientPeers[to]; ok {
-		client.send <- message
-	} else {
-		// 读取目标client所在的服务器
-		client, _ := h.clientCache.GetClient(to)
-		// 消息转发过去
-		if server, ok := h.serverPeers[client.ServerID]; ok {
-			server.send <- message
 		}
 	}
 }

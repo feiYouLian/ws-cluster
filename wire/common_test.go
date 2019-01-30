@@ -12,41 +12,12 @@ import (
 )
 
 func TestReadString(t *testing.T) {
-	var buf bytes.Buffer
-
-	str := "hello 你好"
-	err := WriteString(&buf, str)
-	if err != nil {
-		t.Error(err)
-	}
-
-	err = WriteString(&buf, str)
-	if err != nil {
-		t.Error(err)
-	}
-
-	str2, err := ReadString(&buf)
-	if err != nil {
-		t.Error(err)
-	}
-	if str2 != str {
-		t.Error(str2)
-	}
-
-	str2, _ = ReadString(&buf)
-	if str2 != str {
-		t.Error(str2)
-	}
-	fmt.Println(str2)
-
-	b1 := int8(-127)
-	fmt.Println(b1)
-
-	b2 := uint8(b1)
-	fmt.Println(b2)
-
-	b1 = int8(b2)
-	fmt.Println(b1)
+	bys := []byte{1, 2, 3}
+	buf := bytes.NewReader(bys)
+	val, _ := ReadUint8(buf)
+	val2, _ := ReadUint8(buf)
+	fmt.Println(val, val2)
+	fmt.Println(bys)
 }
 
 func TestWriteInt8(t *testing.T) {

@@ -1,6 +1,8 @@
 package wire
 
-import "io"
+import (
+	"io"
+)
 
 const (
 	// MsgStateUnsend  未发送
@@ -13,19 +15,16 @@ const (
 
 // MsgchatAck 单聊消息应答
 type MsgchatAck struct {
-	ID    uint64
-	To    uint64
-	State uint8 // 0:未发送 1：已发送 2：已读
-	Text  string
+	header *MessageHeader
+	ID     uint64
+	State  uint8 // 0:未发送 1：已发送 2：已读
+	Text   string
 }
 
 // decode Decode
 func (m *MsgchatAck) decode(r io.Reader) error {
 	var err error
 	if m.ID, err = ReadUint64(r); err != nil {
-		return err
-	}
-	if m.To, err = ReadUint64(r); err != nil {
 		return err
 	}
 	if m.State, err = ReadUint8(r); err != nil {
@@ -44,9 +43,6 @@ func (m *MsgchatAck) encode(w io.Writer) error {
 	if err = WriteUint64(w, m.ID); err != nil {
 		return err
 	}
-	if err = WriteUint64(w, m.To); err != nil {
-		return err
-	}
 	if err = WriteUint8(w, m.State); err != nil {
 		return err
 	}
@@ -56,7 +52,7 @@ func (m *MsgchatAck) encode(w io.Writer) error {
 	return nil
 }
 
-// Msgtype 头信息
-func (m *MsgchatAck) Msgtype() uint8 {
-	return MsgTypeChat
+// Header 头信息
+func (m *MsgchatAck) Header() *MessageHeader {
+	return &MessageHeader{MsgTypeChatAck, ScopeChat, m.header.To}
 }

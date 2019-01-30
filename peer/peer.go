@@ -19,7 +19,7 @@ const (
 	defaultPongWait = 60 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
-	defaultPingPeriod = (defaultPongWait * 9) / 10
+	defaultPingPeriod = (defaultPongWait * 8) / 10
 
 	// Maximum message size allowed from peer.
 	defaultMaxMessageSize = 512
@@ -48,7 +48,7 @@ type Config struct {
 	// MessageQueueLen message len
 	MessageQueueLen int
 
-	Listeners MessageListeners
+	Listeners *MessageListeners
 }
 
 type outMessage struct {
@@ -64,12 +64,24 @@ type Peer struct {
 
 	timeConnected time.Time
 
-	connected  int32
-	disconnect int32
+	connected int32
 }
 
 // NewPeer 创建一个新的节点
 func NewPeer(config *Config) *Peer {
+	if config.WriteWait == 0 {
+		config.WriteWait = defaultWriteWait
+	}
+	if config.PongWait == 0 {
+		config.PongWait = defaultPongWait
+	}
+	if config.PingPeriod == 0 {
+		config.PingPeriod = defaultPingPeriod
+	}
+	if config.MaxMessageSize == 0 {
+		config.MaxMessageSize = defaultMaxMessageSize
+	}
+
 	if config.PingPeriod >= config.PongWait {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
@@ -99,11 +111,11 @@ func (p *Peer) start() {
 
 func (p *Peer) handleRead() {
 	defer func() {
+		p.disconnect()
 		p.config.Listeners.OnDisconnect()
-		p.conn.Close()
 	}()
 	p.conn.SetReadLimit(int64(p.config.MaxMessageSize))
-	p.conn.SetReadDeadline(time.Now().Add(p.config.WriteWait))
+	p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
 	p.conn.SetPongHandler(func(string) error { p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait)); return nil })
 	for {
 		_, message, err := p.conn.ReadMessage()
@@ -132,7 +144,7 @@ func (p *Peer) handleWrite() {
 	ticker := time.NewTicker(p.config.PingPeriod)
 	defer func() {
 		ticker.Stop()
-		p.conn.Close()
+		p.disconnect()
 	}()
 	for {
 		select {
@@ -173,5 +185,29 @@ func (p *Peer) handleWrite() {
 
 // PushMessage 把消息写到队列中，等待处理
 func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
+	if p.connected == 0 {
+		if doneChan != nil {
+			go func() {
+				doneChan <- struct{}{}
+			}()
+		}
+		return
+	}
 	p.send <- outMessage{message: message, done: doneChan}
+}
+
+// Close close conn
+func (p *Peer) Close() {
+	if p.connected == 0 {
+		return
+	}
+	close(p.send)
+}
+
+//  断开连接
+func (p *Peer) disconnect() {
+	if !atomic.CompareAndSwapInt32(&p.connected, 1, 0) {
+		return
+	}
+	p.conn.Close()
 }
