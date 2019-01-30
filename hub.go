@@ -30,9 +30,9 @@ type Peer interface {
 type Hub struct {
 	upgrader    *websocket.Upgrader
 	config      *Config
-	clientCache *database.ClientCache
-	groupCache  *database.GroupCache
-	serverCache *database.ServerCache
+	clientCache database.ClientCache
+	groupCache  database.GroupCache
+	serverCache database.ServerCache
 
 	clientPeers map[uint64]*ClientPeer
 	serverPeers map[string]*ServerPeer
@@ -58,7 +58,7 @@ func NewHub(config *Config) (*Hub, error) {
 	hub := &Hub{
 		upgrader:    upgrader,
 		config:      config,
-		clientCache: database.New,
+		clientCache: database.NewRedisClientCache(redis),
 	}
 
 	// http.HandleFunc("/", serveHome)
@@ -226,23 +226,24 @@ func (h *Hub) handleMessage() {
 				if from == clientFlag {
 					h.saveMessage <- message
 				}
-
 				chatMsg := message.(*wire.Msgchat)
-				// 消息转发到其它服务器
-				h.handleChatMsgForwardToServers(chatMsg)
-				// 转发消息出去
-				h.handleChatMsgForwardToClients(chatMsg)
-
+				h.handleMsgForwardToClient(chatMsg, chatMsg.To)
 			} else if message.Msgtype() == wire.MsgTypeChatAck {
-				msg := message.(*wire.MsgchatAck)
-				if client, ok := h.clientPeers[msg.To]; ok {
-					client.send <- message
-				} else {
-					// 读取目标client所在的服务器
-					client, _ := h.clentCache.GetClient(msg.To)
-					// 消息转发过去
-					if server, ok := h.serverPeers[client.ServerID]; ok {
-						server.send <- message
+				chatMsgAck := message.(*wire.MsgchatAck)
+				h.handleMsgForwardToClient(chatMsgAck, chatMsgAck.To)
+			} else if message.Msgtype() == wire.MsgTypeGroup {
+				// 如果消息是直接来源于 client。就转发到其它服务器
+				if from == clientFlag {
+					for _, serverpeer := range h.serverPeers {
+						serverpeer.send <- message
+					}
+				}
+				msg := message.(*wire.Msggroup)
+				// 读取群用户列表。转发
+				clients := h.groupCache.GetGroupMembers(msg.Group)
+				for _, clientID := range clients {
+					if client, ok := h.clientPeers[clientID]; ok {
+						client.send <- message
 					}
 				}
 			}
@@ -251,36 +252,16 @@ func (h *Hub) handleMessage() {
 	}
 }
 
-// 转发消息到其它服务器节点
-func (h *Hub) handleChatMsgForwardToServers(chatMsg *wire.Msgchat) {
-	if chatMsg.Type == wire.ChatTypeGroup {
-		for _, serverpeer := range h.serverPeers {
-			serverpeer.send <- chatMsg
-		}
-	} else if chatMsg.Type == wire.ChatTypeSingle {
-		if _, ok := h.clientPeers[chatMsg.To]; !ok {
-			// 读取目标client所在的服务器
-			client, _ := h.clentCache.GetClient(chatMsg.To)
-			// 消息转发过去
-			if server, ok := h.serverPeers[client.ServerID]; ok {
-				server.send <- chatMsg
-			}
-		}
-	}
-}
-
 // 转发消息到客户端节点
-func (h *Hub) handleChatMsgForwardToClients(chatMsg *wire.Msgchat) {
-	if chatMsg.Type == wire.ChatTypeGroup {
-		group, _ := h.groupCache.GetGroup(chatMsg.To)
-		for _, to := range group.Clients {
-			if client, ok := h.clientPeers[to]; ok {
-				client.send <- chatMsg
-			}
-		}
-	} else if chatMsg.Type == wire.ChatTypeSingle {
-		if clientPeer, ok := h.clientPeers[chatMsg.To]; ok {
-			clientPeer.send <- chatMsg
+func (h *Hub) handleMsgForwardToClient(message wire.Message, to uint64) {
+	if client, ok := h.clientPeers[to]; ok {
+		client.send <- message
+	} else {
+		// 读取目标client所在的服务器
+		client, _ := h.clientCache.GetClient(to)
+		// 消息转发过去
+		if server, ok := h.serverPeers[client.ServerID]; ok {
+			server.send <- message
 		}
 	}
 }

@@ -16,8 +16,8 @@ const (
 
 // Message 定义了消息接口，消息必须有序列化和反序列化方法
 type Message interface {
-	Decode(io.Reader) error
-	Encode(io.Writer) error
+	decode(io.Reader) error
+	encode(io.Writer) error
 	// Msgtype
 	Msgtype() uint8
 }
@@ -44,14 +44,14 @@ func ReadMessage(r io.Reader) (Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = msg.Decode(r); err != nil {
+	if err = msg.decode(r); err != nil {
 		return nil, err
 	}
 	return msg, nil
 }
 
-// WriteHeader write header to writer
-func WriteHeader(w io.Writer, msg Message) error {
+// writeHeader write header to writer
+func writeHeader(w io.Writer, msg Message) error {
 	header := uint32(msg.Msgtype()) << 24
 	if err := WriteUint32(w, header); err != nil {
 		return err
@@ -61,10 +61,10 @@ func WriteHeader(w io.Writer, msg Message) error {
 
 // WriteMessage 把 msg 写到 w 中
 func WriteMessage(w io.Writer, msg Message) error {
-	if err := WriteHeader(w, msg); err != nil {
+	if err := writeHeader(w, msg); err != nil {
 		return err
 	}
-	if err := msg.Encode(w); err != nil {
+	if err := msg.encode(w); err != nil {
 		return err
 	}
 	return nil
@@ -75,6 +75,10 @@ func makeEmptyMessage(msgType uint8) (Message, error) {
 	switch uint8(msgType) {
 	case MsgTypeChat:
 		msg = &Msgchat{}
+	case MsgTypeChatAck:
+		msg = &MsgchatAck{}
+	case MsgTypeGroup:
+		msg = &Msggroup{}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", msgType)
 	}

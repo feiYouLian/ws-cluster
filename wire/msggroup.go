@@ -10,8 +10,8 @@ type Msggroup struct {
 	Text  string
 }
 
-// Decode Decode
-func (m *Msggroup) Decode(r io.Reader) error {
+// decode Decode
+func (m *Msggroup) decode(r io.Reader) error {
 	var err error
 	if m.ID, err = ReadUint64(r); err != nil {
 		return err
@@ -30,8 +30,8 @@ func (m *Msggroup) Decode(r io.Reader) error {
 	return nil
 }
 
-// Encode Encode
-func (m *Msggroup) Encode(w io.Writer) error {
+// encode Encode
+func (m *Msggroup) encode(w io.Writer) error {
 	var err error
 	if err = WriteUint64(w, m.ID); err != nil {
 		return err

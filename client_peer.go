@@ -109,17 +109,15 @@ func (p *ClientPeer) handleWrite() {
 func (p *ClientPeer) pushMessage(w io.WriteCloser, message wire.Message) {
 	if err := message.Encode(w); err == nil {
 		if chatMsg, ok := message.(*wire.Msgchat); ok {
-			if chatMsg.Type == wire.ChatTypeSingle {
-				// 消息应答
-				buf := &bytes.Buffer{}
-				ack := wire.MsgchatAck{
-					ID:    chatMsg.ID,
-					To:    chatMsg.From,
-					State: wire.MsgStateSent,
-				}
-				ack.Encode(buf)
-				p.hub.message <- buf.Bytes()
+			// 消息应答
+			buf := &bytes.Buffer{}
+			ack := wire.MsgchatAck{
+				ID:    chatMsg.ID,
+				To:    chatMsg.From,
+				State: wire.MsgStateSent,
 			}
+			ack.Encode(buf)
+			p.hub.message <- buf.Bytes()
 		}
 	}
 }

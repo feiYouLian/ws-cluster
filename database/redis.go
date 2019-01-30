@@ -18,7 +18,7 @@ func (c *RedisClientCache) AddClient(client *Client) error {
 }
 
 // DelClient DelClient
-func (c *RedisClientCache) DelClient(ID int64) (int, error) {
+func (c *RedisClientCache) DelClient(ID uint64) (int, error) {
 	return 0, nil
 }
 
@@ -28,7 +28,7 @@ func (c *RedisClientCache) DelAll(ServerID string) error {
 }
 
 // GetClient GetClient
-func (c *RedisClientCache) GetClient(ID int64) (*Client, error) {
+func (c *RedisClientCache) GetClient(ID uint64) (*Client, error) {
 	return nil, nil
 }
 

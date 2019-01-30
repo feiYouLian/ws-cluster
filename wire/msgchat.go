@@ -18,8 +18,8 @@ type Msgchat struct {
 	Text string
 }
 
-// Decode Decode
-func (m *Msgchat) Decode(r io.Reader) error {
+// decode decode
+func (m *Msgchat) decode(r io.Reader) error {
 	var err error
 	if m.ID, err = ReadUint64(r); err != nil {
 		return err
@@ -40,8 +40,8 @@ func (m *Msgchat) Decode(r io.Reader) error {
 	return nil
 }
 
-// Encode Encode
-func (m *Msgchat) Encode(w io.Writer) error {
+// encode encode
+func (m *Msgchat) encode(w io.Writer) error {
 	var err error
 	if err = WriteUint64(w, m.ID); err != nil {
 		return err

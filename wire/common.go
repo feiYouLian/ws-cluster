@@ -44,16 +44,25 @@ func ReadUint64(r io.Reader) (uint64, error) {
 
 // ReadString 从 reader 中读取一个 string
 func ReadString(r io.Reader) (string, error) {
-	len, err := ReadUint32(r)
-	if err != nil {
-		return "", err
-	}
-	buf := make([]byte, len)
-	_, err = io.ReadFull(r, buf)
+	buf, err := ReadBytes(r)
 	if err != nil {
 		return "", err
 	}
 	return string(buf), nil
+}
+
+// ReadBytes 从 reader 中读取一个 []byte, reader中前4byte 必须是[]byte 的长度
+func ReadBytes(r io.Reader) ([]byte, error) {
+	len, err := ReadUint32(r)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, len)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 // WriteUint8 写一个 uint8到 writer 中
@@ -87,13 +96,21 @@ func WriteUint64(w io.Writer, val uint64) error {
 
 // WriteString 写一个 string 到 writer 中
 func WriteString(w io.Writer, str string) error {
-	slen := len(str)
+	if err := WriteBytes(w, []byte(str)); err != nil {
+		return err
+	}
+	return nil
+}
+
+// WriteBytes 写一个 buf []byte 到 writer 中
+func WriteBytes(w io.Writer, buf []byte) error {
+	slen := len(buf)
 
 	if err := WriteUint32(w, uint32(slen)); err != nil {
 		return err
 	}
 
-	if _, err := w.Write([]byte(str)); err != nil {
+	if _, err := w.Write(buf); err != nil {
 		return err
 	}
 	return nil
