@@ -24,7 +24,8 @@ func NewMemGroupCache() *MemGroupCache {
 // Join 加入一个群，如果群不存在就创建一个
 func (c *MemGroupCache) Join(group string, clientID uint64) error {
 	c.Mutex.Lock()
-	if _, ok := c.groups[group]; !ok {
+	g, ok := c.groups[group]
+	if !ok {
 		c.groups[group] = &Group{
 			Name:    group,
 			Clients: make(map[uint64]bool),
@@ -32,8 +33,8 @@ func (c *MemGroupCache) Join(group string, clientID uint64) error {
 	}
 	c.Mutex.Unlock()
 
-	if _, ok := c.groups[group].Clients[clientID]; !ok {
-		c.groups[group].Clients[clientID] = true
+	if _, ok := g.Clients[clientID]; !ok {
+		g.Clients[clientID] = true
 	}
 	return nil
 }
@@ -61,9 +62,12 @@ func clean(c *MemGroupCache) {
 	for {
 		select {
 		case <-ticker.C:
+
 			for name, group := range c.groups {
 				if len(group.Clients) == 0 {
+					c.Mutex.Lock()
 					delete(c.groups, name)
+					c.Mutex.Unlock()
 				}
 			}
 		}
