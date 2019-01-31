@@ -7,7 +7,6 @@ import (
 // Msggroup 群组消息
 type Msggroup struct {
 	header *MessageHeader
-	ID     uint64
 	From   uint64
 	Text   string
 }
@@ -15,9 +14,6 @@ type Msggroup struct {
 // decode Decode
 func (m *Msggroup) decode(r io.Reader) error {
 	var err error
-	if m.ID, err = ReadUint64(r); err != nil {
-		return err
-	}
 	if m.From, err = ReadUint64(r); err != nil {
 		return err
 	}
@@ -31,9 +27,6 @@ func (m *Msggroup) decode(r io.Reader) error {
 // encode Encode
 func (m *Msggroup) encode(w io.Writer) error {
 	var err error
-	if err = WriteUint64(w, m.ID); err != nil {
-		return err
-	}
 	if err = WriteUint64(w, m.From); err != nil {
 		return err
 	}
@@ -45,5 +38,5 @@ func (m *Msggroup) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *Msggroup) Header() *MessageHeader {
-	return &MessageHeader{MsgTypeGroup, ScopeChat, m.header.To}
+	return &MessageHeader{m.header.ID, MsgTypeGroup, ScopeChat, m.header.To}
 }

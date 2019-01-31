@@ -7,7 +7,6 @@ import (
 // Msgchat 单聊消息
 type Msgchat struct {
 	header *MessageHeader
-	ID     uint64
 	From   uint64
 	Type   uint8 // 1: text 2: image
 	Text   string
@@ -16,9 +15,6 @@ type Msgchat struct {
 // decode decode
 func (m *Msgchat) decode(r io.Reader) error {
 	var err error
-	if m.ID, err = ReadUint64(r); err != nil {
-		return err
-	}
 	if m.From, err = ReadUint64(r); err != nil {
 		return err
 	}
@@ -35,9 +31,6 @@ func (m *Msgchat) decode(r io.Reader) error {
 // encode encode
 func (m *Msgchat) encode(w io.Writer) error {
 	var err error
-	if err = WriteUint64(w, m.ID); err != nil {
-		return err
-	}
 	if err = WriteUint64(w, m.From); err != nil {
 		return err
 	}
@@ -52,5 +45,5 @@ func (m *Msgchat) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *Msgchat) Header() *MessageHeader {
-	return &MessageHeader{MsgTypeChat, ScopeChat, m.header.To}
+	return &MessageHeader{m.header.ID, MsgTypeChat, ScopeChat, m.header.To}
 }

@@ -16,37 +16,22 @@ const (
 // MsgchatAck 单聊消息应答
 type MsgchatAck struct {
 	header *MessageHeader
-	ID     uint64
 	State  uint8 // 0:未发送 1：已发送 2：已读
-	Text   string
 }
 
 // decode Decode
 func (m *MsgchatAck) decode(r io.Reader) error {
 	var err error
-	if m.ID, err = ReadUint64(r); err != nil {
-		return err
-	}
 	if m.State, err = ReadUint8(r); err != nil {
 		return err
 	}
-	if m.Text, err = ReadString(r); err != nil {
-		return err
-	}
-
 	return nil
 }
 
 // encode Encode
 func (m *MsgchatAck) encode(w io.Writer) error {
 	var err error
-	if err = WriteUint64(w, m.ID); err != nil {
-		return err
-	}
 	if err = WriteUint8(w, m.State); err != nil {
-		return err
-	}
-	if err = WriteString(w, m.Text); err != nil {
 		return err
 	}
 	return nil
@@ -54,5 +39,5 @@ func (m *MsgchatAck) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *MsgchatAck) Header() *MessageHeader {
-	return &MessageHeader{MsgTypeChatAck, ScopeChat, m.header.To}
+	return &MessageHeader{m.header.ID, MsgTypeChatAck, ScopeChat, m.header.To}
 }

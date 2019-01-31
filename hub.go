@@ -31,7 +31,13 @@ type ServerPeer struct {
 
 // OnMessage 接收消息
 func (p *ServerPeer) OnMessage(message []byte) error {
-	p.hub.message <- hubMessage{from: serverFlag, message: message}
+	header, err := wire.ReadHeader(bytes.NewReader(message))
+	if err != nil {
+		return err
+	}
+	if header.Scope != wire.ScopeNull {
+		p.hub.message <- hubMessage{from: serverFlag, message: message, header: header}
+	}
 	return nil
 }
 
@@ -55,7 +61,28 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message []byte) error {
-	p.hub.message <- hubMessage{from: clientFlag, message: message}
+	header, err := wire.ReadHeader(bytes.NewReader(message))
+	if err != nil {
+		return err
+	}
+	if header.Scope != wire.ScopeNull {
+		p.hub.message <- hubMessage{from: clientFlag, message: message, header: header}
+		return nil
+	}
+	msg, _ := wire.ReadMessage(bytes.NewReader(message))
+
+	switch header.Msgtype {
+	case wire.MsgTypeJoinGroup:
+		msgJoinGroup := msg.(*wire.MsgJoinGroup)
+		for _, group := range msgJoinGroup.Groups {
+			p.hub.groupCache.Join(group, p.entity.ID)
+		}
+	case wire.MsgTypeLeaveGroup:
+		msgLeaveGroup := msg.(*wire.MsgLeaveGroup)
+		for _, group := range msgLeaveGroup.Groups {
+			p.hub.groupCache.Leave(group, p.entity.ID)
+		}
+	}
 
 	return nil
 }
@@ -72,7 +99,7 @@ func newServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*Serv
 		entity: server,
 	}
 
-	peer := peer.NewPeer(server.ID,
+	peer := peer.NewPeer(fmt.Sprintf("S%d", server.ID),
 		&peer.Config{
 			Listeners: &peer.MessageListeners{
 				OnMessage:    serverPeer.OnMessage,
@@ -93,7 +120,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 		entity: client,
 	}
 
-	peer := peer.NewPeer(fmt.Sprint(client.ID), &peer.Config{
+	peer := peer.NewPeer(fmt.Sprintf("C%d", client.ID), &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
@@ -109,10 +136,11 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 
 type hubMessage struct {
 	from    byte
+	header  *wire.MessageHeader
 	message []byte
 }
 
-// Hub 是一个中转中心，所有 clientPeer
+// Hub 是一个服务中心，所有 clientPeer
 type Hub struct {
 	upgrader    *websocket.Upgrader
 	config      *Config
@@ -121,7 +149,7 @@ type Hub struct {
 	serverCache database.ServerCache
 
 	clientPeers map[uint64]*ClientPeer
-	serverPeers map[string]*ServerPeer
+	serverPeers map[uint64]*ServerPeer
 
 	registClient   chan *ClientPeer
 	unregistClient chan *ClientPeer
@@ -205,7 +233,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	ID := r.Header.Get("id")
+	ID, _ := strconv.ParseUint(r.Header.Get("id"), 0, 64)
 	IP := r.Header.Get("ip")
 	Port, _ := strconv.Atoi(r.Header.Get("port"))
 
@@ -253,7 +281,7 @@ func (h *Hub) initServer() error {
 		log.Printf("connecting to %s", u.String())
 
 		header := http.Header{}
-		header.Add("id", serverSelf.ID)
+		header.Add("id", fmt.Sprint(serverSelf.ID))
 		header.Add("ip", serverSelf.IP)
 		header.Add("port", strconv.Itoa(serverSelf.Port))
 
@@ -305,9 +333,8 @@ func (h *Hub) handleMessage() {
 	for {
 		select {
 		case msg := <-h.message:
-			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
-			if err != nil {
-				fmt.Println(err)
+			header := msg.header
+			if header == nil {
 				continue
 			}
 			if header.Scope == wire.ScopeChat {

@@ -13,9 +13,15 @@ const (
 	MsgTypeChatAck = uint8(4)
 	// MsgTypeGroup group
 	MsgTypeGroup = uint8(5)
+	// MsgTypeJoinGroup join group
+	MsgTypeJoinGroup = uint8(7)
+	// MsgTypeLeaveGroup leave group
+	MsgTypeLeaveGroup = uint8(9)
 )
 
 const (
+	// ScopeNull no target
+	ScopeNull = uint8(0)
 	// ScopeChat msg to client
 	ScopeChat = uint8(1)
 	// ScopeGroup msg to a group
@@ -24,6 +30,7 @@ const (
 
 // MessageHeader MessageHeader
 type MessageHeader struct {
+	ID      uint32
 	Msgtype uint8
 	Scope   uint8
 	To      []byte
@@ -60,6 +67,9 @@ type Message interface {
 func ReadHeader(r io.Reader) (*MessageHeader, error) {
 	header := &MessageHeader{}
 	var err error
+	if header.ID, err = ReadUint32(r); err != nil {
+		return nil, err
+	}
 	if header.Msgtype, err = ReadUint8(r); err != nil {
 		return nil, err
 	}
@@ -78,7 +88,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	msg, err := makeEmptyMessage(header.Msgtype)
+	msg, err := MakeEmptyMessage(header)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +101,9 @@ func ReadMessage(r io.Reader) (Message, error) {
 // WriteHeader write header to writer
 func WriteHeader(w io.Writer, msg Message) error {
 	header := msg.Header()
+	if err := WriteUint32(w, header.ID); err != nil {
+		return err
+	}
 	if err := WriteUint8(w, header.Msgtype); err != nil {
 		return err
 	}
@@ -114,17 +127,22 @@ func WriteMessage(w io.Writer, msg Message) error {
 	return nil
 }
 
-func makeEmptyMessage(msgType uint8) (Message, error) {
+// MakeEmptyMessage 创建一个空的消息体
+func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 	var msg Message
-	switch uint8(msgType) {
+	switch uint8(header.Msgtype) {
 	case MsgTypeChat:
-		msg = &Msgchat{}
+		msg = &Msgchat{header: header}
 	case MsgTypeChatAck:
-		msg = &MsgchatAck{}
+		msg = &MsgchatAck{header: header}
 	case MsgTypeGroup:
-		msg = &Msggroup{}
+		msg = &Msggroup{header: header}
+	case MsgTypeJoinGroup:
+		msg = &MsgJoinGroup{header: header}
+	case MsgTypeLeaveGroup:
+		msg = &MsgLeaveGroup{header: header}
 	default:
-		return nil, fmt.Errorf("unhandled msgType[%d]", msgType)
+		return nil, fmt.Errorf("unhandled msgType[%d]", header.Msgtype)
 	}
 
 	return msg, nil

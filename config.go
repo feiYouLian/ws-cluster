@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/go-ini/ini"
@@ -23,7 +24,7 @@ var (
 
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
 type Config struct {
-	ServerID     string `description:"server id"`
+	ServerID     uint64 `description:"server id"`
 	ServerAddr   string
 	ServerListen int
 	ServerSecret string
@@ -42,11 +43,6 @@ func loadConfig() (*Config, error) {
 	var config Config
 	var change = false
 	section := cfg.Section("server")
-	// if !section.HasKey("id") {
-	// 	section.Key("id").SetValue(fmt.Sprintf("S%d", time.Now().UnixNano()))
-	// 	change = true
-	// }
-	// config.ServerID = section.Key("id").String()
 
 	config.ServerAddr = section.Key("addr").String()
 	config.ServerSecret = section.Key("secret").String()
@@ -66,15 +62,16 @@ func loadConfig() (*Config, error) {
 		}
 	}
 
-	f, err := os.Stat(defaultIDConfigFile)
+	_, err = os.Stat(defaultIDConfigFile)
 	if err != nil {
-		sid := fmt.Sprintf("S%d", time.Now().UnixNano())
+		sid := fmt.Sprintf("%d", time.Now().UnixNano())
 		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), os.ModeType)
 	}
-	fb, _ := ioutil.ReadFile(defaultIDConfigFile)
-	config.ServerID = string(fb)
-	if config.ServerID == "" {
-		return nil, fmt.Errorf("ServerID is empty")
+	fb, err := ioutil.ReadFile(defaultIDConfigFile)
+	if err != nil {
+		return nil, err
 	}
+	config.ServerID, _ = strconv.ParseUint(string(fb), 0, 64)
+
 	return &config, nil
 }
