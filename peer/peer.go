@@ -58,6 +58,7 @@ type outMessage struct {
 
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
+	id     string
 	config *Config
 	conn   *websocket.Conn
 	send   chan outMessage
@@ -68,7 +69,7 @@ type Peer struct {
 }
 
 // NewPeer 创建一个新的节点
-func NewPeer(config *Config) *Peer {
+func NewPeer(id string, config *Config) *Peer {
 	if config.WriteWait == 0 {
 		config.WriteWait = defaultWriteWait
 	}
@@ -86,12 +87,13 @@ func NewPeer(config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
+		id:     id,
 		config: config,
 		send:   make(chan outMessage, config.MessageQueueLen),
 	}
 }
 
-// SetConnection 关联
+// SetConnection bind connection , start
 func (p *Peer) SetConnection(conn *websocket.Conn) {
 	// Already connected?
 	if !atomic.CompareAndSwapInt32(&p.connected, 0, 1) {
@@ -111,21 +113,24 @@ func (p *Peer) start() {
 
 func (p *Peer) handleRead() {
 	defer func() {
-		p.disconnect()
 		p.config.Listeners.OnDisconnect()
+		p.disconnect()
 	}()
 	p.conn.SetReadLimit(int64(p.config.MaxMessageSize))
 	p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
 	p.conn.SetPongHandler(func(string) error { p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait)); return nil })
 	for {
-		_, message, err := p.conn.ReadMessage()
+		messageType, message, err := p.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
-
+		if messageType == websocket.CloseMessage {
+			log.Printf("closed: %v", p.id)
+			break
+		}
 		go func(message []byte) {
 			// 从消息中取出多条单个消息一一处理
 			buf := bytes.NewReader(message)

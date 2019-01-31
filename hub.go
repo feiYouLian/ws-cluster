@@ -66,20 +66,20 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func newServerPeer(h *Hub, cfg *Config, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
-
+func newServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
 	serverPeer := &ServerPeer{
 		hub:    h,
 		entity: server,
 	}
 
-	peer := peer.NewPeer(&peer.Config{
-		Listeners: &peer.MessageListeners{
-			OnMessage:    serverPeer.OnMessage,
-			OnDisconnect: serverPeer.OnDisconnect,
-		},
-		MessageQueueLen: 50,
-	})
+	peer := peer.NewPeer(server.ID,
+		&peer.Config{
+			Listeners: &peer.MessageListeners{
+				OnMessage:    serverPeer.OnMessage,
+				OnDisconnect: serverPeer.OnDisconnect,
+			},
+			MessageQueueLen: 50,
+		})
 
 	serverPeer.Peer = peer
 	serverPeer.SetConnection(conn)
@@ -87,9 +87,24 @@ func newServerPeer(h *Hub, cfg *Config, conn *websocket.Conn, server *database.S
 	return serverPeer, nil
 }
 
-func newClientPeer(h *Hub, cfg *Config, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+	clientPeer := &ClientPeer{
+		hub:    h,
+		entity: client,
+	}
 
-	return nil, nil
+	peer := peer.NewPeer(fmt.Sprint(client.ID), &peer.Config{
+		Listeners: &peer.MessageListeners{
+			OnMessage:    clientPeer.OnMessage,
+			OnDisconnect: clientPeer.OnDisconnect,
+		},
+		MessageQueueLen: 50,
+	})
+
+	clientPeer.Peer = peer
+	clientPeer.SetConnection(conn)
+
+	return clientPeer, nil
 }
 
 type hubMessage struct {
@@ -130,6 +145,8 @@ func NewHub(config *Config) (*Hub, error) {
 		upgrader:     upgrader,
 		config:       config,
 		clientCache:  database.NewRedisClientCache(redis),
+		serverCache:  database.NewRedisServerCache(redis),
+		groupCache:   database.NewMemGroupCache(),
 		registClient: make(chan *ClientPeer, 1),
 	}
 
@@ -172,7 +189,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(clientID, 0, 64)
-	clientPeer, err := newClientPeer(hub.config, conn, &database.Client{
+	clientPeer, err := newClientPeer(hub, conn, &database.Client{
 		ID:   uint64(id),
 		Name: name,
 	})
@@ -197,7 +214,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	serverPeer, err := newServerPeer(hub.config, conn, &database.Server{
+	serverPeer, err := newServerPeer(hub, conn, &database.Server{
 		ID:   ID,
 		IP:   IP,
 		Port: Port,
@@ -244,7 +261,7 @@ func (h *Hub) initServer() error {
 		if err != nil {
 			log.Fatal("dial:", err)
 		}
-		serverPeer, err := newServerPeer(h.config, conn, &server)
+		serverPeer, err := newServerPeer(h, conn, &server)
 		if err != nil {
 			fmt.Println(err)
 			continue
@@ -268,6 +285,8 @@ func (h *Hub) handlePeer() {
 			if _, ok := h.clientPeers[peer.entity.ID]; ok {
 				delete(h.clientPeers, peer.entity.ID)
 				peer.Close()
+
+				h.clientCache.DelClient(peer.entity.ID)
 			}
 		case peer := <-h.registServer:
 			h.serverPeers[peer.entity.ID] = peer
@@ -313,10 +332,13 @@ func (h *Hub) handleMessage() {
 					}
 				}
 				// 读取群用户列表。转发
-				clients := h.groupCache.GetGroupMembers(group)
+				clients, _ := h.groupCache.GetGroupMembers(group)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
 						client.PushMessage(msg.message, nil)
+					} else {
+						// 如果发现用户不存在就清理掉
+						h.groupCache.Leave(group, clientID)
 					}
 				}
 			}

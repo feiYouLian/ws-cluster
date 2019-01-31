@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -10,11 +12,13 @@ import (
 
 const (
 	defaultConfigName = "conf.ini"
+	defaultIDName     = ".lock"
 )
 
 var (
-	defaultDir        = "./"
-	defaultConfigFile = filepath.Join(defaultDir, defaultConfigName)
+	defaultDir          = "./"
+	defaultConfigFile   = filepath.Join(defaultDir, defaultConfigName)
+	defaultIDConfigFile = filepath.Join(defaultDir, defaultIDName)
 )
 
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
@@ -38,11 +42,12 @@ func loadConfig() (*Config, error) {
 	var config Config
 	var change = false
 	section := cfg.Section("server")
-	if !section.HasKey("id") {
-		section.Key("id").SetValue(fmt.Sprintf("S%d", time.Now().UnixNano()))
-		change = true
-	}
-	config.ServerID = section.Key("id").String()
+	// if !section.HasKey("id") {
+	// 	section.Key("id").SetValue(fmt.Sprintf("S%d", time.Now().UnixNano()))
+	// 	change = true
+	// }
+	// config.ServerID = section.Key("id").String()
+
 	config.ServerAddr = section.Key("addr").String()
 	config.ServerSecret = section.Key("secret").String()
 	config.ServerListen = section.Key("listen").MustInt(6379)
@@ -59,6 +64,17 @@ func loadConfig() (*Config, error) {
 		if err := cfg.SaveTo(defaultConfigFile); err != nil {
 			return nil, err
 		}
+	}
+
+	f, err := os.Stat(defaultIDConfigFile)
+	if err != nil {
+		sid := fmt.Sprintf("S%d", time.Now().UnixNano())
+		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), os.ModeType)
+	}
+	fb, _ := ioutil.ReadFile(defaultIDConfigFile)
+	config.ServerID = string(fb)
+	if config.ServerID == "" {
+		return nil, fmt.Errorf("ServerID is empty")
 	}
 	return &config, nil
 }
