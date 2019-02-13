@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/ws-cluster/peer"
 	"github.com/ws-cluster/wire"
@@ -36,7 +37,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 		return err
 	}
 	if header.Scope != wire.ScopeNull {
-		p.hub.message <- hubMessage{from: serverFlag, message: message, header: header}
+		p.hub.sendMessage <- sendMessage{from: serverFlag, message: message, header: header}
 	}
 	return nil
 }
@@ -66,7 +67,39 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 		return err
 	}
 	if header.Scope != wire.ScopeNull {
-		p.hub.message <- hubMessage{from: clientFlag, message: message, header: header}
+		// 如果是单聊消息，就保存到 db 中
+		if header.Scope == wire.ScopeChat {
+			msg, err := wire.ReadMessage(bytes.NewBuffer(message))
+			if err != nil {
+				return err
+			}
+			chatMsg, _ := msg.(*wire.Msgchat)
+
+			done := make(chan bool)
+			to, _ := header.Uint64To()
+			chatmsg := &database.ChatMsg{
+				From:     p.entity.ID,
+				To:       to,
+				Type:     chatMsg.Type,
+				Text:     chatMsg.Text,
+				CreateAt: time.Now(),
+			}
+			p.hub.saveMessage <- saveMessage{chatmsg, done}
+			saved := <-done
+			// message is saved
+			if saved {
+				ackHeader := &wire.MessageHeader{ID: header.ID, Msgtype: wire.MsgTypeChatAck, Scope: wire.ScopeChat}
+				ackMessage, _ := wire.MakeEmptyMessage(ackHeader)
+				msgChatAck, _ := ackMessage.(*wire.MsgchatAck)
+				buf := &bytes.Buffer{}
+				err := wire.WriteMessage(buf, msgChatAck)
+				if err != nil {
+					return err
+				}
+				p.PushMessage(buf.Bytes(), nil)
+			}
+		}
+		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: header}
 		return nil
 	}
 	msg, _ := wire.ReadMessage(bytes.NewReader(message))
@@ -125,7 +158,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
 		},
-		MessageQueueLen: 50,
+		MessageQueueLen: h.config.Message.QueueLen,
 	})
 
 	clientPeer.Peer = peer
@@ -134,10 +167,15 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 	return clientPeer, nil
 }
 
-type hubMessage struct {
+type sendMessage struct {
 	from    byte
 	header  *wire.MessageHeader
 	message []byte
+}
+
+type saveMessage struct {
+	msg  *database.ChatMsg
+	done chan bool //
 }
 
 // Hub 是一个服务中心，所有 clientPeer
@@ -148,6 +186,8 @@ type Hub struct {
 	groupCache  database.GroupCache
 	serverCache database.ServerCache
 
+	messageStore database.MessageStore
+
 	clientPeers map[uint64]*ClientPeer
 	serverPeers map[uint64]*ServerPeer
 
@@ -156,8 +196,10 @@ type Hub struct {
 	registServer   chan *ServerPeer
 	unregistServer chan *ServerPeer
 
-	message     chan hubMessage
-	saveMessage chan wire.Message
+	sendMessage chan sendMessage
+	saveMessage chan saveMessage
+
+	quit chan struct{}
 }
 
 // NewHub 创建一个 Server 对象，并初始化
@@ -167,26 +209,38 @@ func NewHub(config *Config) (*Hub, error) {
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
-	redis := database.InitRedis(config.RedisIP)
+	// build a client instance of redis
+
+	redis := database.InitRedis(config.Redis.IP, config.Redis.Port, config.Redis.Password)
+
+	mysqldb := database.InitDb(config.Mysql.IP, config.Mysql.Port, config.Mysql.User, config.Mysql.Password, config.Mysql.DbName)
 
 	hub := &Hub{
-		upgrader:     upgrader,
-		config:       config,
-		clientCache:  database.NewRedisClientCache(redis),
-		serverCache:  database.NewRedisServerCache(redis),
-		groupCache:   database.NewMemGroupCache(),
-		registClient: make(chan *ClientPeer, 1),
+		upgrader:       upgrader,
+		config:         config,
+		clientCache:    database.NewRedisClientCache(redis),
+		serverCache:    database.NewRedisServerCache(redis),
+		groupCache:     database.NewMemGroupCache(),
+		messageStore:   database.NewMysqlMessageStore(mysqldb),
+		registClient:   make(chan *ClientPeer, 1),
+		unregistClient: make(chan *ClientPeer, 1),
+		registServer:   make(chan *ServerPeer, 1),
+		unregistServer: make(chan *ServerPeer, 1),
+		sendMessage:    make(chan sendMessage, 1),
+		saveMessage:    make(chan saveMessage, 1),
+		quit:           make(chan struct{}),
 	}
 
-	// http.HandleFunc("/", serveHome)
+	// regist a service for client
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
 		handleClientWebSocket(hub, w, r)
 	})
+	// regist a service for server
 	http.HandleFunc("/server", func(w http.ResponseWriter, r *http.Request) {
 		handleServerWebSocket(hub, w, r)
 	})
 
-	err := http.ListenAndServe(config.ServerAddr, nil)
+	err := http.ListenAndServe(config.Server.Addr, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 		return nil, err
@@ -261,7 +315,7 @@ func (h *Hub) run() {
 
 	go h.handlePeer()
 	go h.handleMessage()
-
+	go h.handlesaveMessage()
 }
 
 func (h *Hub) initServer() error {
@@ -270,9 +324,9 @@ func (h *Hub) initServer() error {
 		return err
 	}
 	serverSelf := database.Server{
-		ID:   h.config.ServerID,
+		ID:   h.config.Server.ID,
 		IP:   GetOutboundIP().String(),
-		Port: h.config.ServerListen,
+		Port: h.config.Server.Listen,
 	}
 
 	// 主动连接到其它节点
@@ -314,7 +368,7 @@ func (h *Hub) handlePeer() {
 				delete(h.clientPeers, peer.entity.ID)
 				peer.Close()
 
-				h.clientCache.DelClient(peer.entity.ID)
+				h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
 			}
 		case peer := <-h.registServer:
 			h.serverPeers[peer.entity.ID] = peer
@@ -323,6 +377,7 @@ func (h *Hub) handlePeer() {
 			if _, ok := h.serverPeers[peer.entity.ID]; ok {
 				delete(h.serverPeers, peer.entity.ID)
 				peer.Close()
+				// 不删除缓存。只有主服务才有权删除
 			}
 		}
 	}
@@ -332,10 +387,10 @@ func (h *Hub) handlePeer() {
 func (h *Hub) handleMessage() {
 	for {
 		select {
-		case msg := <-h.message:
+		case msg := <-h.sendMessage:
 			header := msg.header
 			if header == nil {
-				continue
+				return
 			}
 			if header.Scope == wire.ScopeChat {
 				to, _ := header.Uint64To()
@@ -368,6 +423,21 @@ func (h *Hub) handleMessage() {
 						h.groupCache.Leave(group, clientID)
 					}
 				}
+			}
+		}
+	}
+}
+
+func (h *Hub) handlesaveMessage() {
+	for {
+		select {
+		case msg := <-h.saveMessage:
+			fmt.Println(msg.msg.Text)
+			err := h.messageStore.Save(msg.msg)
+			if err != nil {
+				msg.done <- false
+			} else {
+				msg.done <- true
 			}
 		}
 	}

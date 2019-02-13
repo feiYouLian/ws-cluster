@@ -7,7 +7,7 @@ import (
 const (
 	// MsgStateUnsend  未发送
 	MsgStateUnsend = iota
-	// MsgStateSent 1：已发送
+	// MsgStateSent 1：发送成功
 	MsgStateSent
 	// MsgStateRead 2：已读
 	MsgStateRead

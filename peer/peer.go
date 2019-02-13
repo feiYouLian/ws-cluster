@@ -2,6 +2,7 @@ package peer
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -131,17 +132,23 @@ func (p *Peer) handleRead() {
 			log.Printf("closed: %v", p.id)
 			break
 		}
-		go func(message []byte) {
-			// 从消息中取出多条单个消息一一处理
-			buf := bytes.NewReader(message)
-			for {
-				msg, err := wire.ReadBytes(buf)
-				if err != nil {
-					break
-				}
-				p.config.Listeners.OnMessage(msg)
+
+		// 从消息中取出多条单个消息一一处理
+		buf := bytes.NewReader(message)
+		for {
+			msg, err := wire.ReadBytes(buf)
+			if err != nil {
+				fmt.Printf("error from %v : %v", p.id, err)
+				continue
 			}
-		}(message)
+			go func(message []byte) {
+				err = p.config.Listeners.OnMessage(msg)
+				if err != nil {
+					fmt.Println(err)
+				}
+			}(msg)
+		}
+
 	}
 }
 

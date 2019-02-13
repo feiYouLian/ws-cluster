@@ -31,8 +31,8 @@ const (
 // MessageHeader MessageHeader
 type MessageHeader struct {
 	ID      uint32
-	Msgtype uint8
-	Scope   uint8
+	Msgtype uint8 // 指定消息的类型
+	Scope   uint8 //指定消息是发给单人还是群
 	To      []byte
 }
 

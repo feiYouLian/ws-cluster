@@ -13,10 +13,13 @@ func Test_loadConfig(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{"t1", &Config{
-			ServerID:  "S1548323716594833000",
-			RedisIP:   "127.0.0.1",
-			RedisPort: 6379,
-			MysqlIP:   "192.168.0.1",
+			Redis: RedisConfig{
+				IP:   "192.168.0.127",
+				Port: 6379,
+			},
+			Mysql: MysqlConfig{
+				IP: "192.168.0.127",
+			},
 		}, false},
 	}
 	for _, tt := range tests {

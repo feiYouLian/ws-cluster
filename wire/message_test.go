@@ -7,11 +7,9 @@ import (
 	"testing"
 )
 
-var b1 = []byte{0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0}
-var b2 = []byte{0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 5, 0, 0, 0, 104, 101, 108, 108, 111}
+var b1 = []byte{1, 0, 0, 0, 3, 1, 4, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0}
 
-var m1 = &Msgchat{1, 2, 3, 1, ""}
-var m2 = &Msgchat{1, 2, 3, 2, "hello"}
+var m1 = &Msgchat{&MessageHeader{1, MsgTypeChat, ScopeChat, []byte{0, 0, 0, 2}}, 1, 3, ""}
 
 func TestWriteMessage(t *testing.T) {
 	type args struct {
@@ -25,7 +23,6 @@ func TestWriteMessage(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{"def", args{m1}, b1, false},
-		{"def2", args{m2}, b2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,7 +51,6 @@ func TestReadMessage(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{"t1", args{bytes.NewReader(b1)}, m1, false},
-		{"t2", args{bytes.NewReader(b2)}, m2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
