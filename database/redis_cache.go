@@ -132,13 +132,15 @@ func (c *RedisServerCache) GetServers() ([]Server, error) {
 		return nil, err
 	}
 	servers := make([]Server, len(res))
+	i := 0
 	for _, item := range res {
 		server := Server{}
 		err := json.Unmarshal([]byte(item), &server)
 		if err != nil {
 			continue
 		}
-		servers = append(servers, server)
+		servers[i] = server
+		i++
 	}
 	return servers, nil
 }

@@ -5,7 +5,7 @@ import './App.css';
 class App extends Component {
   componentDidMount(){
     const secret = "xxx123456"
-    let wsclient = new WsClient("ws://loaclhost:8080",secret)
+    let wsclient = new WsClient("ws://localhost:8080",secret)
 
     wsclient.login(1,"kai")
   }

@@ -10,7 +10,7 @@ class WsClient {
     }
     login(id,name){
         let nonce = new Date()*1+"";
-        let digest = md5("")
+        let digest = md5(`${id}${nonce}${this.cfg.secret}`)
         let wsurl = `${this.cfg.url}/client?id=${id}&name=${name}&nonce=${nonce}&digest=${digest}`
         
         this.conn = new WebSocket(wsurl);
@@ -30,6 +30,9 @@ class WsClient {
     }
     _onmessage(data){
         console.log(data)
+    }
+    onOpen(method){
+        this.ws_onopen = method
     }
     onMessage(method){
         this.ws_onmessage = method

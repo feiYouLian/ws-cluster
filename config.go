@@ -28,6 +28,7 @@ type ServerConfig struct {
 	Addr   string
 	Listen int
 	Secret string
+	Origin string
 }
 
 // RedisConfig redis config

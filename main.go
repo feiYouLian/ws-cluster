@@ -10,7 +10,7 @@ import (
 )
 
 func handleInterrupt(hub *Hub, sc chan os.Signal) {
-
+	hub.quit <- struct{}{}
 }
 
 func main() {

@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -226,6 +229,9 @@ func NewHub(config *Config) (*Hub, error) {
 	var upgrader = &websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
 	}
 	// build a client instance of redis
 
@@ -240,6 +246,8 @@ func NewHub(config *Config) (*Hub, error) {
 		serverCache:    database.NewRedisServerCache(redis),
 		groupCache:     database.NewMemGroupCache(),
 		messageStore:   database.NewMysqlMessageStore(mysqldb),
+		clientPeers:    make(map[uint64]*ClientPeer, 100),
+		serverPeers:    make(map[uint64]*ServerPeer, 100),
 		registClient:   make(chan *ClientPeer, 1),
 		unregistClient: make(chan *ClientPeer, 1),
 		registServer:   make(chan *ServerPeer, 1),
@@ -257,13 +265,15 @@ func NewHub(config *Config) (*Hub, error) {
 	http.HandleFunc("/server", func(w http.ResponseWriter, r *http.Request) {
 		handleServerWebSocket(hub, w, r)
 	})
+	go func() {
+		log.Println("listen on ", config.Server.Listen)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", config.Server.Listen), nil)
 
-	err := http.ListenAndServe(fmt.Sprintf("%s:%d", config.Server.Addr, config.Server.Listen), nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-		return nil, err
-	}
-
+		if err != nil {
+			fmt.Println("ListenAndServe: ", err)
+			return
+		}
+	}()
 	return hub, nil
 }
 
@@ -281,6 +291,14 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
+	h := md5.New()
+	io.WriteString(h, clientID)
+	io.WriteString(h, nonce)
+	io.WriteString(h, hub.config.Server.Secret)
+	if digest != hex.EncodeToString(h.Sum(nil)) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	// upgrade
 	conn, err := hub.upgrader.Upgrade(w, r, nil)
@@ -328,12 +346,14 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) run() {
+
 	// 连接到其它服务器节点
 	h.initServer()
 
 	go h.handlePeer()
 	go h.handleMessage()
 	go h.handlesaveMessage()
+	<-h.quit
 }
 
 func (h *Hub) initServer() error {
@@ -349,6 +369,9 @@ func (h *Hub) initServer() error {
 
 	// 主动连接到其它节点
 	for _, server := range servers {
+		if server.ID == serverSelf.ID {
+			continue
+		}
 		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
 		log.Printf("connecting to %s", u.String())
 
@@ -359,7 +382,8 @@ func (h *Hub) initServer() error {
 
 		conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 		if err != nil {
-			log.Fatal("dial:", err)
+			log.Println("dial:", err)
+			continue
 		}
 		serverPeer, err := newServerPeer(h, conn, &server)
 		if err != nil {
