@@ -2,6 +2,7 @@ package peer
 
 import (
 	"bytes"
+	"container/list"
 	"fmt"
 	"log"
 	"sync/atomic"
@@ -59,11 +60,13 @@ type outMessage struct {
 
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
-	id     string
-	config *Config
-	conn   *websocket.Conn
-	send   chan outMessage
-
+	id            string
+	config        *Config
+	conn          *websocket.Conn
+	outQueue      chan outMessage
+	sendQueue     chan outMessage
+	sendDone      chan struct{}
+	quit          chan struct{}
 	timeConnected time.Time
 
 	connected int32
@@ -88,9 +91,12 @@ func NewPeer(id string, config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
-		id:     id,
-		config: config,
-		send:   make(chan outMessage, config.MessageQueueLen),
+		id:        id,
+		config:    config,
+		outQueue:  make(chan outMessage, 1),
+		sendQueue: make(chan outMessage, 1),
+		sendDone:  make(chan struct{}, 1),
+		quit:      make(chan struct{}),
 	}
 }
 
@@ -108,11 +114,12 @@ func (p *Peer) SetConnection(conn *websocket.Conn) {
 }
 
 func (p *Peer) start() {
-	go p.handleRead()
-	go p.handleWrite()
+	go p.inMessageHandler()
+	go p.outQueueHandler()
+	go p.outMessageHandler()
 }
 
-func (p *Peer) handleRead() {
+func (p *Peer) inMessageHandler() {
 	defer func() {
 		p.config.Listeners.OnDisconnect()
 		p.disconnect()
@@ -138,8 +145,8 @@ func (p *Peer) handleRead() {
 		for {
 			msg, err := wire.ReadBytes(buf)
 			if err != nil {
-				fmt.Printf("error from %v : %v", p.id, err)
-				continue
+				// no more message
+				break
 			}
 			go func(message []byte) {
 				err = p.config.Listeners.OnMessage(msg)
@@ -152,21 +159,56 @@ func (p *Peer) handleRead() {
 	}
 }
 
-func (p *Peer) handleWrite() {
+// 消息队列处理
+func (p *Peer) outQueueHandler() {
+	pendingMsgs := list.New()
+
+	// We keep the waiting flag so that we know if we have a pending message
+	waiting := false
+
+	// To avoid duplication below.
+	queuePacket := func(msg outMessage, list *list.List, waiting bool) bool {
+		if !waiting {
+			p.sendQueue <- msg
+		} else {
+			list.PushBack(msg)
+		}
+		// we are always waiting now.
+		return true
+	}
+
+	for {
+		select {
+		case msg, _ := <-p.outQueue:
+			waiting = queuePacket(msg, pendingMsgs, waiting)
+		case <-p.sendDone:
+			next := pendingMsgs.Front()
+			if next == nil {
+				waiting = false
+				continue
+			}
+
+			// Notify the handleWirte about the next item to
+			// asynchronously send.
+			val := pendingMsgs.Remove(next)
+			p.sendQueue <- val.(outMessage)
+		case <-p.quit:
+			break
+		}
+	}
+
+}
+
+func (p *Peer) outMessageHandler() {
 	ticker := time.NewTicker(p.config.PingPeriod)
 	defer func() {
-		ticker.Stop()
 		p.disconnect()
+		ticker.Stop()
 	}()
 	for {
 		select {
-		case outMessage, ok := <-p.send:
+		case outMessage := <-p.sendQueue:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
-			if !ok {
-				// The hub closed the channel.
-				p.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
 
 			w, err := p.conn.NextWriter(websocket.BinaryMessage)
 			if err != nil {
@@ -175,22 +217,18 @@ func (p *Peer) handleWrite() {
 			wire.WriteBytes(w, outMessage.message)
 			outMessage.done <- struct{}{}
 
-			// Add queued chat messages to the current websocket message.
-			n := len(p.send)
-			for i := 0; i < n; i++ {
-				outMessage := <-p.send
-				wire.WriteBytes(w, outMessage.message)
-				outMessage.done <- struct{}{}
-			}
-
 			if err := w.Close(); err != nil {
 				return
 			}
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+				break
 			}
+		case <-p.quit:
+			// The hub closed the channel.
+			p.conn.WriteMessage(websocket.CloseMessage, nil)
+			break
 		}
 	}
 }
@@ -205,7 +243,7 @@ func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
 		}
 		return
 	}
-	p.send <- outMessage{message: message, done: doneChan}
+	p.outQueue <- outMessage{message: message, done: doneChan}
 }
 
 // Close close conn
@@ -213,7 +251,7 @@ func (p *Peer) Close() {
 	if p.connected == 0 {
 		return
 	}
-	close(p.send)
+	p.quit <- struct{}{}
 }
 
 //  断开连接
