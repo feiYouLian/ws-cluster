@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultConfigName = "conf.ini"
-	defaultIDName     = ".lock"
+	defaultIDName     = "id.lock"
 )
 
 var (
@@ -67,29 +67,29 @@ func loadConfig() (*Config, error) {
 	}
 	var config Config
 	section := cfg.Section("server")
-	var serverConfig ServerConfig
-	err = section.MapTo(&serverConfig)
+	config.Server = ServerConfig{}
+	err = section.MapTo(&config.Server)
 	if err != nil {
 		return nil, err
 	}
 
 	section = cfg.Section("redis")
-	var redisConfig RedisConfig
-	err = section.MapTo(&redisConfig)
+	config.Redis = RedisConfig{}
+	err = section.MapTo(&config.Redis)
 	if err != nil {
 		return nil, err
 	}
 
 	section = cfg.Section("mysql")
-	var mysqlConfig MysqlConfig
-	err = section.MapTo(&mysqlConfig)
+	config.Mysql = MysqlConfig{}
+	err = section.MapTo(&config.Mysql)
 	if err != nil {
 		return nil, err
 	}
 
 	section = cfg.Section("message")
-	var messageConfig MessageConfig
-	err = section.MapTo(&messageConfig)
+	config.Message = MessageConfig{}
+	err = section.MapTo(&config.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func loadConfig() (*Config, error) {
 	_, err = os.Stat(defaultIDConfigFile)
 	if err != nil {
 		sid := fmt.Sprintf("%d", time.Now().UnixNano())
-		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), os.ModeType)
+		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), 0644)
 	}
 	fb, err := ioutil.ReadFile(defaultIDConfigFile)
 	if err != nil {

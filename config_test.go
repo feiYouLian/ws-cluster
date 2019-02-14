@@ -1,7 +1,6 @@
 package main
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -29,7 +28,7 @@ func Test_loadConfig(t *testing.T) {
 				t.Errorf("loadConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
+			if got.Redis.IP != tt.want.Redis.IP {
 				t.Errorf("loadConfig() = %v, want %v", got, tt.want)
 			}
 		})
