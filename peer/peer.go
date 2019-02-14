@@ -215,7 +215,9 @@ func (p *Peer) outMessageHandler() {
 				return
 			}
 			wire.WriteBytes(w, outMessage.message)
-			outMessage.done <- struct{}{}
+			if outMessage.done != nil {
+				outMessage.done <- struct{}{}
+			}
 
 			if err := w.Close(); err != nil {
 				return

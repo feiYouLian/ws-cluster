@@ -126,21 +126,6 @@ func (p *ClientPeer) saveMessage(sendMsg *sendMessage) error {
 	return nil
 }
 
-// func ackMessage() {
-// 	ackHeader := &wire.MessageHeader{ID: header.ID, Msgtype: wire.MsgTypeChatAck, Scope: wire.ScopeChat}
-// 	ackMessage, _ := wire.MakeEmptyMessage(ackHeader)
-// 	msgChatAck, _ := ackMessage.(*wire.MsgchatAck)
-// 	// set state sent
-// 	msgChatAck.State = wire.MsgStateSent
-
-// 	buf := &bytes.Buffer{}
-// 	err := wire.WriteMessage(buf, msgChatAck)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	p.PushMessage(buf.Bytes(), nil)
-// }
-
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
 	p.hub.unregistClient <- p
@@ -316,6 +301,8 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
+	ack, _ := wire.ChatAckMessage(uint32(time.Now().Unix()), 2)
+	clientPeer.PushMessage(ack, nil)
 
 	hub.registClient <- clientPeer
 

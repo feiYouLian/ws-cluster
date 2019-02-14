@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "byte-data": "^16.0.3",
     "md5": "^2.2.1",
     "react": "^16.8.1",
     "react-dom": "^16.8.1",
     "react-scripts": "2.1.5",
+    "utf8-buffer-size": "^0.0.4",
     "utfx": "^1.0.1"
   },
   "scripts": {

@@ -147,3 +147,19 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 
 	return msg, nil
 }
+
+// ChatAckMessage make a ChatAck message
+func ChatAckMessage(id uint32, state uint8) ([]byte, error) {
+	ackHeader := &MessageHeader{ID: id, Msgtype: MsgTypeChatAck, Scope: ScopeChat}
+	ackMessage, _ := MakeEmptyMessage(ackHeader)
+	msgChatAck, _ := ackMessage.(*MsgchatAck)
+	// set state sent
+	msgChatAck.State = state
+
+	buf := &bytes.Buffer{}
+	err := WriteMessage(buf, msgChatAck)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
