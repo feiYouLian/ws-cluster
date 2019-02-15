@@ -7,16 +7,12 @@ import (
 )
 
 const (
+	// MsgTypeAck ack
+	MsgTypeAck = uint8(1)
 	// MsgTypeChat 单聊消息
 	MsgTypeChat = uint8(3)
-	// MsgTypeChatAck ack
-	MsgTypeChatAck = uint8(4)
-	// MsgTypeGroup group
-	MsgTypeGroup = uint8(5)
-	// MsgTypeJoinGroup join group
-	MsgTypeJoinGroup = uint8(7)
-	// MsgTypeLeaveGroup leave group
-	MsgTypeLeaveGroup = uint8(9)
+	// MsgTypeGroupInOut join or leave group
+	MsgTypeGroupInOut = uint8(5)
 )
 
 const (
@@ -119,14 +115,10 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 	switch uint8(header.Msgtype) {
 	case MsgTypeChat:
 		msg = &Msgchat{header: header}
-	case MsgTypeChatAck:
-		msg = &MsgchatAck{header: header}
-	case MsgTypeGroup:
-		msg = &Msggroup{header: header}
-	case MsgTypeJoinGroup:
-		msg = &MsgJoinGroup{header: header}
-	case MsgTypeLeaveGroup:
-		msg = &MsgLeaveGroup{header: header}
+	case MsgTypeAck:
+		msg = &MsgAck{header: header}
+	case MsgTypeGroupInOut:
+		msg = &MsgGroupInOut{header: header}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", header.Msgtype)
 	}
@@ -134,16 +126,16 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 	return msg, nil
 }
 
-// ChatAckMessage make a ChatAck message
-func ChatAckMessage(id uint32, state uint8) ([]byte, error) {
-	ackHeader := &MessageHeader{ID: id, Msgtype: MsgTypeChatAck, Scope: ScopeChat}
+// MakeAckMessage make a ChatAck message
+func MakeAckMessage(id uint32, state uint8) ([]byte, error) {
+	ackHeader := &MessageHeader{ID: id, Msgtype: MsgTypeAck, Scope: ScopeChat}
 	ackMessage, _ := MakeEmptyMessage(ackHeader)
-	msgChatAck, _ := ackMessage.(*MsgchatAck)
+	msgAck, _ := ackMessage.(*MsgAck)
 	// set state sent
-	msgChatAck.State = state
+	msgAck.State = state
 
 	buf := &bytes.Buffer{}
-	err := WriteMessage(buf, msgChatAck)
+	err := WriteMessage(buf, msgAck)
 	if err != nil {
 		return nil, err
 	}

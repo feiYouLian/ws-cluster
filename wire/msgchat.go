@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-// Msgchat 单聊消息
+// Msgchat 聊天消息
 type Msgchat struct {
 	header *MessageHeader
 	From   string

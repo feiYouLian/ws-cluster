@@ -43,7 +43,7 @@ class WsClient {
         for (let i = 0; i < len;) {
             let len = byte.unpack(buf, { bits: 32 }, 0)
             let packet = buf.subarray(0, len)
-            
+
             i += len;
         }
 
@@ -66,16 +66,9 @@ class WsClient {
 
 // MsgTypeConst 定义了各种消息类型
 const MsgTypeConst = {
-    // MsgTypeChat 单聊消息
-    Chat: 3,
-    // MsgTypeChatAck ack
-    ChatAck: 4,
-    // MsgTypeGroup group
-    ChatGroup: 5,
-    // MsgTypeJoinGroup join group
-    JoinGroup: 7,
-    // MsgTypeLeaveGroup leave group
-    LeaveGroup: 9,
+    Ack: 1,  //  消息ack
+    Chat: 3,  //  聊天消息
+    GroupInOut: 7, //group in out
 }
 
 // ScopeConst 消息发送范围
@@ -86,8 +79,6 @@ const ScopeConst = {
     Group: 3,
 }
 
-const BufferSize = 1024;
-
 
 class MessageHeader {
     constructor(id, msgType, scope, to) {
@@ -96,66 +87,204 @@ class MessageHeader {
         this.scope = scope
         this.to = to
     }
-    // 解码 Uint8Array to MessageHeader
+    // 解码 Buffer to MessageHeader
     decode(buf) {
-        this.id = byte.unpack(buf, { bits: 32 }, 0)
-        this.msgType = byte.unpack(buf, { bits: 8 }, 4)
-        this.scope = byte.unpack(buf, { bits: 8 }, 5)
+        this.id = buf.getUint32()
+        this.msgType = buf.getUint8()
+        this.scope = buf.getUint8()
         if (this.scope > 0) {
-            if (this.scope === ScopeConst.Chat) {
-                this.to = byte.unpack(buf, { bits: 64  }, 6)
-            } else if (this.scope === ScopeConst.Group) {
-                let strLen = byte.unpack(buf, { bits: 32 }, 6)
-                this.to = byte.unpackString(buf, 10, strLen)
-            }
+            this.to = buf.getString()
         }
     }
-    encode() {
-        let d = this;
-        let buf = new Uint8Array(100)
-        let nindex = byte.packTo(d.id, { bits: 32 }, buf)
-        nindex = byte.packTo(d.msgType, { bits: 8 }, buf, nindex)
-        nindex = byte.packTo(d.scope, { bits: 8 }, buf, nindex)
-        if (d.scope !== 0 && d.to !== undefined) {
-            if (d.scope === ScopeConst.Chat) {
-                nindex = byte.packTo(d.to, { bits: 64 }, buf, nindex)
-            } else if (this.scope === ScopeConst.Group) {
-                let strLen = utf8BufferSize(d.to)
-                nindex = byte.packTo(strLen, { bits: 32 }, buf, nindex)
-                nindex = byte.packStringTo(d.to, buf, nindex)
-            }
+    encode(buf) {
+        buf.putUint32(this.id)
+        buf.putUint8(this.msgType)
+        buf.putUint8(this.scope)
+        if (this.scope > 0) {
+            buf.putString(this.to)
         }
-        return buf.subarray(0, nindex)
     }
 }
 
-class Msgchat extends MessageHeader {
-    constructor(id, msgType, scope, to, from_, type, text) {
-        super(id, msgType, scope, to)
+class Message {
+    constructor(header) {
+        this.header = header
+    }
+    Header() {
+        return this.header
+    }
+}
+
+// MsgChat 聊天消息体
+class MsgChat extends Message {
+    /**
+     * 
+     * @param {*} header 
+     * @param {*} from_ your clientid
+     * @param {*} type 1- text 2-image
+     * @param {*} text 
+     */
+    constructor(header, from_, type, text) {
+        super(header)
         this.from = from_
         this.type = type
         this.text = text
     }
+    /**
+     * return buf下一个位置
+     * @param {*} buf 
+     */
     decode(buf) {
-        this.from = byte.unpack(buf, { bits: 64 }, 0)
-        this.type = byte.unpack(buf, { bits: 8 }, 8)
-        let strLen = byte.unpack(buf, { bits: 32 }, 9)
-        this.text = byte.unpackString(buf, 10, strLen)
+        this.from = buf.getString()
+        this.type = buf.getUint8()
+        this.text = buf.getString()
     }
-    encode() {
-        let d = this;
-        let buf = new Uint8Array(BufferSize)
-        let nindex = byte.packTo(d.from, { bits: 32 }, buf)
-        nindex = byte.packTo(d.type, { bits: 8 }, buf, nindex)
-        nindex = byte.packStringTo(d.text, buf, nindex)
-        return buf.subarray(0, nindex)
+    encode(buf) {
+        buf.putString(this.from)
+        buf.putUint8(this.type)
+        buf.putString(this.text)
+    }
+}
+
+// MsgGroupInOut 群 in out
+class MsgGroupInOut extends Message {
+    constructor(header, inout, groups) {
+        super(header)
+        this.inout = inout
+        this.groups = groups
+    }
+    /**
+     * return buf下一个位置
+     * @param {*} buf 
+     */
+    decode(buf) {
+        this.inout = buf.getUint8()
+        this.groups = buf.getString().split(",")
+    }
+    encode(buf) {
+        buf.putUint8(this.inout)
+        buf.putString(this.groups.join(","))
+    }
+}
+
+class MsgAck extends Message {
+    constructor(header, state, desc) {
+        super(header)
+        this.state = state
+        this.desc = desc
+    }
+    /**
+     * return buf下一个位置
+     * @param {*} buf 
+     */
+    decode(buf) {
+        this.state = buf.getUint8()
+        this.desc = buf.getString()
+    }
+    encode(buf) {
+        buf.putUint8(this.state)
+        buf.putString(this.desc)
+    }
+}
+
+// 字节缓冲，最大1024,只能单向 get 或者 put. 否则 buffer 超过长度
+class Buffer {
+    BufferSize = 1024;
+    constructor(uint8array) {
+        if (uint8array) {
+            this.buffer = uint8array
+            this.length = uint8array.length
+        } else {
+            this.buffer = new Uint8Array(this.BufferSize)
+            this.length = 0
+        }
+        this._offset = 0 //写偏移
+        this._index = 0 //读偏移
+    }
+    putUint8(value) {
+        this._offset = byte.packTo(value, { bits: 8 }, this.buffer, this._offset)
+        this.length += 1
+    }
+    putUint32(value) {
+        this._offset = byte.packTo(value, { bits: 32 }, this.buffer, this._offset)
+        this.length += 4
+    }
+    putString(value) {
+        let strLen = utf8BufferSize(value)
+        this.putUint32(strLen)
+        this._offset = byte.packStringTo(value, this.buffer, this._offset)
+        this.length += strLen
+    }
+    getUint8() {
+        let value = byte.unpack(this.buffer, { bits: 8 }, this._index)
+        this._index += 1
+        return value
+    }
+    getUint32() {
+        let value = byte.unpack(this.buffer, { bits: 32 }, this._index)
+        this._index += 4
+        return value
+    }
+    getString() {
+        let strLen = this.getUint32()
+        let value = byte.unpackString(this.buffer, this._index, this._index + strLen)
+        this._index += strLen
+        return value
+    }
+    clear() {
+        this.buffer = new Uint8Array(this.BufferSize)
+        this.length = 0
+        this._index = 0
+        this._offset = 0
+    }
+    getBytes() {
+        return this.buffer.subarray(0, this.length)
+    }
+    toString() {
+        return this.bytes()
+    }
+}
+
+const MsgUtils = {
+    /**
+     * 解码uint8array，返回一个消息对象
+     */
+    decode: (uint8array) => {
+        let buf = new Buffer(uint8array)
+        let header = new MessageHeader()
+        header.decode(buf)
+        let message = this.makeEmptyMsg(header)
+        message.decode(buf)
+        return message
+    },
+    /**
+     * 编码message，返回一个 UInt8Array
+     */
+    encode: (message) => {
+        let buf = new Buffer()
+        message.Header().encode(buf)
+        message.encode(buf)
+        return buf.getBytes()
+    },
+    makeEmptyMsg: (header) => {
+        switch (header.msgType) {
+            case MsgTypeConst.Ack:
+                return new MsgAck(header);
+            case MsgTypeConst.Chat:
+                return new MsgChat(header);
+            case MsgTypeConst.GroupInOut:
+                return new MsgGroupInOut(header);
+            default:
+                return null;
+        }
     }
 }
 
 export default {
     WsClient,
     MessageHeader,
-    Msgchat,
+    MsgChat,
     ScopeConst,
     MsgTypeConst,
+    Buffer,
 }

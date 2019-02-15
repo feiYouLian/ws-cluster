@@ -5,15 +5,19 @@ import (
 	"strings"
 )
 
-// MsgJoinGroup 单聊消息应答
-type MsgJoinGroup struct {
+// MsgGroupInOut 进入、退出 群
+type MsgGroupInOut struct {
 	header *MessageHeader
+	InOut  uint8 //1 in 0: out
 	Groups []string
 }
 
 // decode Decode
-func (m *MsgJoinGroup) decode(r io.Reader) error {
+func (m *MsgGroupInOut) decode(r io.Reader) error {
 	var err error
+	if m.InOut, err = ReadUint8(r); err != nil {
+		return err
+	}
 	grouparr, err := ReadString(r)
 	if err != nil {
 		return err
@@ -23,8 +27,11 @@ func (m *MsgJoinGroup) decode(r io.Reader) error {
 }
 
 // encode Encode
-func (m *MsgJoinGroup) encode(w io.Writer) error {
+func (m *MsgGroupInOut) encode(w io.Writer) error {
 	var err error
+	if err = WriteUint8(w, m.InOut); err != nil {
+		return err
+	}
 	if err = WriteString(w, strings.Join(m.Groups, ",")); err != nil {
 		return err
 	}
@@ -32,6 +39,6 @@ func (m *MsgJoinGroup) encode(w io.Writer) error {
 }
 
 // Header 头信息
-func (m *MsgJoinGroup) Header() *MessageHeader {
+func (m *MsgGroupInOut) Header() *MessageHeader {
 	return &MessageHeader{m.header.ID, MsgTypeJoinGroup, 0, ""}
 }
