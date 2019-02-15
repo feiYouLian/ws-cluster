@@ -7,7 +7,7 @@ import (
 // Msgchat 单聊消息
 type Msgchat struct {
 	header *MessageHeader
-	From   uint64
+	From   string
 	Type   uint8 // 1: text 2: image
 	Text   string
 }
@@ -15,7 +15,7 @@ type Msgchat struct {
 // decode decode
 func (m *Msgchat) decode(r io.Reader) error {
 	var err error
-	if m.From, err = ReadUint64(r); err != nil {
+	if m.From, err = ReadString(r); err != nil {
 		return err
 	}
 	if m.Type, err = ReadUint8(r); err != nil {
@@ -31,7 +31,7 @@ func (m *Msgchat) decode(r io.Reader) error {
 // encode encode
 func (m *Msgchat) encode(w io.Writer) error {
 	var err error
-	if err = WriteUint64(w, m.From); err != nil {
+	if err = WriteString(w, m.From); err != nil {
 		return err
 	}
 	if err = WriteUint8(w, m.Type); err != nil {

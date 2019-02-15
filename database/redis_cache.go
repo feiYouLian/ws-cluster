@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	clientReidsPattern       = "CLIENT_%d"
-	serverClientReidsPattern = "SERVER_CLIENT_%d"
+	clientReidsPattern       = "CLIENT_%v"
+	serverClientReidsPattern = "SERVER_CLIENT_%v"
 	serversRedis             = "SERVER_LIST"
-	serverReidsPattern       = "SERVER_%d"
+	serverReidsPattern       = "SERVER_%v"
 )
 
 // RedisClientCache redis ClientCache
@@ -40,7 +40,7 @@ func (c *RedisClientCache) AddClient(client *Client) error {
 }
 
 // DelClient DelClient
-func (c *RedisClientCache) DelClient(ID uint64, ServerID uint64) (int, error) {
+func (c *RedisClientCache) DelClient(ID string, ServerID uint64) (int, error) {
 	cmd := c.client.Del(fmt.Sprintf(clientReidsPattern, ID))
 	aff, err := cmd.Result()
 	if err != nil {
@@ -60,7 +60,7 @@ func (c *RedisClientCache) DelAll(ServerID uint64) error {
 }
 
 // GetClient GetClient
-func (c *RedisClientCache) GetClient(ID uint64) (*Client, error) {
+func (c *RedisClientCache) GetClient(ID string) (*Client, error) {
 	ckey := fmt.Sprintf(clientReidsPattern, ID)
 	cmd := c.client.Get(ckey)
 	str, err := cmd.Result()

@@ -30,30 +30,10 @@ const (
 
 // MessageHeader MessageHeader
 type MessageHeader struct {
-	ID      uint32
-	Msgtype uint8 // 指定消息的类型
-	Scope   uint8 //指定消息是发给单人还是群
-	To      []byte
-}
-
-// StringTo convert to string
-func (h *MessageHeader) StringTo() (string, error) {
-	buf := bytes.NewReader(h.To)
-	val, err := ReadString(buf)
-	if err != nil {
-		return "", err
-	}
-	return val, nil
-}
-
-// Uint64To convert to  uint64
-func (h *MessageHeader) Uint64To() (uint64, error) {
-	buf := bytes.NewReader(h.To)
-	val, err := ReadUint64(buf)
-	if err != nil {
-		return 0, err
-	}
-	return val, nil
+	ID      uint32 //消息序列号，非全局唯一主健
+	Msgtype uint8  // 指定消息的类型
+	Scope   uint8  //指定消息是发给单人还是群
+	To      string
 }
 
 // Message 定义了消息接口，消息必须有序列化和反序列化方法
@@ -76,10 +56,34 @@ func ReadHeader(r io.Reader) (*MessageHeader, error) {
 	if header.Scope, err = ReadUint8(r); err != nil {
 		return nil, err
 	}
-	if header.To, err = ReadBytes(r); err != nil {
+	if header.Scope == ScopeNull {
+		return header, nil
+	}
+	if header.To, err = ReadString(r); err != nil {
 		return nil, err
 	}
 	return header, nil
+}
+
+// WriteHeader write header to writer
+func WriteHeader(w io.Writer, msg Message) error {
+	header := msg.Header()
+	if err := WriteUint32(w, header.ID); err != nil {
+		return err
+	}
+	if err := WriteUint8(w, header.Msgtype); err != nil {
+		return err
+	}
+	if err := WriteUint8(w, header.Scope); err != nil {
+		return err
+	}
+	if header.Scope == ScopeNull {
+		return nil
+	}
+	if err := WriteString(w, header.To); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ReadMessage 从reader 中读取消息
@@ -96,24 +100,6 @@ func ReadMessage(r io.Reader) (Message, error) {
 		return nil, err
 	}
 	return msg, nil
-}
-
-// WriteHeader write header to writer
-func WriteHeader(w io.Writer, msg Message) error {
-	header := msg.Header()
-	if err := WriteUint32(w, header.ID); err != nil {
-		return err
-	}
-	if err := WriteUint8(w, header.Msgtype); err != nil {
-		return err
-	}
-	if err := WriteUint8(w, header.Scope); err != nil {
-		return err
-	}
-	if err := WriteBytes(w, header.To); err != nil {
-		return err
-	}
-	return nil
 }
 
 // WriteMessage 把 msg 写到 w 中

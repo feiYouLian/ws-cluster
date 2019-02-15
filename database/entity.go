@@ -6,7 +6,7 @@ import (
 
 // Client 是一个具体的客户端身份对象
 type Client struct {
-	ID       uint64
+	ID       string
 	Name     string
 	ServerID uint64
 	// Extra 额外信息
@@ -17,13 +17,13 @@ type Client struct {
 // 聊天室不保存
 type Group struct {
 	Name    string
-	Clients map[uint64]bool
+	Clients map[string]bool
 }
 
 // Server 服务器对象
 type Server struct {
 	// ID 服务器Id, 自动生成，缓存到file 中，重启时 ID 不变
-	ID       uint64
+	ID       string
 	BootTime time.Time
 	Ping     time.Time
 	IP       string
@@ -33,8 +33,8 @@ type Server struct {
 // ChatMsg 单聊消息
 type ChatMsg struct {
 	ID       uint64
-	From     uint64
-	To       uint64
+	From     string
+	To       string
 	Type     uint8 //msg type
 	Text     string
 	CreateAt time.Time

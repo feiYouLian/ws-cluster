@@ -33,5 +33,5 @@ func (m *MsgLeaveGroup) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *MsgLeaveGroup) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeLeaveGroup, 0, []byte{}}
+	return &MessageHeader{m.header.ID, MsgTypeLeaveGroup, 0, ""}
 }

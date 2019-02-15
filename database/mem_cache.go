@@ -22,13 +22,13 @@ func NewMemGroupCache() *MemGroupCache {
 }
 
 // Join 加入一个群，如果群不存在就创建一个
-func (c *MemGroupCache) Join(group string, clientID uint64) error {
+func (c *MemGroupCache) Join(group string, clientID string) error {
 	c.Mutex.Lock()
 	g, ok := c.groups[group]
 	if !ok {
 		c.groups[group] = &Group{
 			Name:    group,
-			Clients: make(map[uint64]bool),
+			Clients: make(map[string]bool),
 		}
 	}
 	c.Mutex.Unlock()
@@ -40,7 +40,7 @@ func (c *MemGroupCache) Join(group string, clientID uint64) error {
 }
 
 // Leave 退出群
-func (c *MemGroupCache) Leave(group string, clientID uint64) error {
+func (c *MemGroupCache) Leave(group string, clientID string) error {
 	if _, ok := c.groups[group]; !ok {
 		return nil
 	}
