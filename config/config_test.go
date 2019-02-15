@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ func Test_loadConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := loadConfig()
+			got, err := LoadConfig()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return

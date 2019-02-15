@@ -20,7 +20,7 @@ type ServerCache interface {
 type GroupCache interface {
 	Join(group string, clientID string) error
 	Leave(group string, clientID string) error
-	GetGroupMembers(group string) ([]uint64, error)
+	GetGroupMembers(group string) ([]string, error)
 }
 
 // Cache 定义了缓存层接口，缓存层用于保护用户会话及服务列表等数据

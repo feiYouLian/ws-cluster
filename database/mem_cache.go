@@ -52,7 +52,7 @@ func (c *MemGroupCache) Leave(group string, clientID string) error {
 }
 
 // GetGroupMembers 取群中成员
-func (c *MemGroupCache) GetGroupMembers(group string) ([]uint64, error) {
+func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
 	return nil, nil
 }
 

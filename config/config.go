@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -60,7 +60,8 @@ type Config struct {
 	Message MessageConfig
 }
 
-func loadConfig() (*Config, error) {
+// LoadConfig LoadConfig
+func LoadConfig() (*Config, error) {
 	cfg, err := ini.Load(defaultConfigFile)
 	if err != nil {
 		fmt.Printf("Fail to read file: %v", err)

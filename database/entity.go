@@ -23,7 +23,7 @@ type Group struct {
 // Server 服务器对象
 type Server struct {
 	// ID 服务器Id, 自动生成，缓存到file 中，重启时 ID 不变
-	ID       string
+	ID       uint64
 	BootTime time.Time
 	Ping     time.Time
 	IP       string

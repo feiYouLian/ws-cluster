@@ -1,4 +1,4 @@
-package main
+package hub
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/ws-cluster/config"
 
 	"github.com/ws-cluster/peer"
 	"github.com/ws-cluster/wire"
@@ -186,7 +188,7 @@ type saveMessage struct {
 // Hub 是一个服务中心，所有 clientPeer
 type Hub struct {
 	upgrader    *websocket.Upgrader
-	config      *Config
+	config      *config.Config
 	clientCache database.ClientCache
 	groupCache  database.GroupCache
 	serverCache database.ServerCache
@@ -194,7 +196,7 @@ type Hub struct {
 	messageStore database.MessageStore
 
 	clientPeers map[string]*ClientPeer
-	serverPeers map[string]*ServerPeer
+	serverPeers map[uint64]*ServerPeer
 
 	registClient   chan *ClientPeer
 	unregistClient chan *ClientPeer
@@ -208,7 +210,7 @@ type Hub struct {
 }
 
 // NewHub 创建一个 Server 对象，并初始化
-func NewHub(config *Config) (*Hub, error) {
+func NewHub(config *config.Config) (*Hub, error) {
 
 	var upgrader = &websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -231,7 +233,7 @@ func NewHub(config *Config) (*Hub, error) {
 		groupCache:     database.NewMemGroupCache(),
 		messageStore:   database.NewMysqlMessageStore(mysqldb),
 		clientPeers:    make(map[string]*ClientPeer, 100),
-		serverPeers:    make(map[string]*ServerPeer, 100),
+		serverPeers:    make(map[uint64]*ServerPeer, 100),
 		registClient:   make(chan *ClientPeer, 1),
 		unregistClient: make(chan *ClientPeer, 1),
 		registServer:   make(chan *ServerPeer, 1),
@@ -330,7 +332,8 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	hub.registServer <- serverPeer
 }
 
-func (h *Hub) run() {
+// Run start all handlers
+func (h *Hub) Run() {
 
 	// 连接到其它服务器节点
 	h.initServer()
@@ -348,7 +351,7 @@ func (h *Hub) initServer() error {
 	}
 	serverSelf := database.Server{
 		ID:   h.config.Server.ID,
-		IP:   GetOutboundIP().String(),
+		IP:   wire.GetOutboundIP().String(),
 		Port: h.config.Server.Listen,
 	}
 
@@ -468,4 +471,9 @@ func (h *Hub) handlesaveMessage() {
 			}
 		}
 	}
+}
+
+// Close close hub
+func (h *Hub) Close() {
+	h.quit <- struct{}{}
 }

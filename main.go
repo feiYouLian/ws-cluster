@@ -6,29 +6,32 @@ import (
 	"os/signal"
 	"runtime"
 
+	"github.com/ws-cluster/config"
+	"github.com/ws-cluster/hub"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func handleInterrupt(hub *Hub, sc chan os.Signal) {
-	hub.quit <- struct{}{}
+func handleInterrupt(hub *hub.Hub, sc chan os.Signal) {
+	hub.Close()
 }
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// read config
-	cfg, err := loadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	// new server
-	hub, err := NewHub(cfg)
+	hub, err := hub.NewHub(cfg)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	hub.run()
+	hub.Run()
 
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
