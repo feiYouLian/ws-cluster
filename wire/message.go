@@ -128,7 +128,7 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 
 // MakeAckMessage make a ChatAck message
 func MakeAckMessage(id uint32, state uint8) ([]byte, error) {
-	ackHeader := &MessageHeader{ID: id, Msgtype: MsgTypeAck, Scope: ScopeChat}
+	ackHeader := &MessageHeader{ID: id, Msgtype: MsgTypeAck, Scope: ScopeNull}
 	ackMessage, _ := MakeEmptyMessage(ackHeader)
 	msgAck, _ := ackMessage.(*MsgAck)
 	// set state sent

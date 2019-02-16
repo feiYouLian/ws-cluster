@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"log"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/core"
@@ -15,6 +16,11 @@ type MysqMessageStore struct {
 
 // NewMysqlMessageStore new a MysqMessageStore
 func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
+	err := engine.Sync2(new(ChatMsg))
+	if err != nil {
+		log.Println(err)
+	}
+
 	return &MysqMessageStore{
 		engine: engine,
 	}
@@ -31,7 +37,7 @@ func InitDb(ip string, port int, user, pwd, dbname string) *xorm.Engine {
 	url := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", user, pwd, ip, port, dbname)
 	engine, err := xorm.NewEngine("mysql", url)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return nil
 	}
 
@@ -42,9 +48,5 @@ func InitDb(ip string, port int, user, pwd, dbname string) *xorm.Engine {
 
 	engine.SetColumnMapper(core.SnakeMapper{})
 
-	// err = engine.Sync2(new(UserTaskRecord))
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 	return engine
 }

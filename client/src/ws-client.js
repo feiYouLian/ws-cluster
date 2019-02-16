@@ -23,7 +23,7 @@ class WsClient {
 
         this.conn.onopen = (evt) => {
             console.log("websocket open success! event_type: " + evt.type)
-            this.ws_onopen(true)
+            this.ws_onopen.call(this,true)
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
@@ -33,21 +33,20 @@ class WsClient {
         }
         this.conn.onerror = (evt) => {
             console.error("websocket open failed! event_type: " + evt.type)
-            this.ws_onopen(false)
+            this.ws_onopen.call(this,false)
         }
     }
     // 接收到消息之后处理
     _onmessage(data) {
-        let buf = new Uint8Array(data)
-        let len = buf.length;
+        let arr = new Uint8Array(data)
+        let len = arr.length;
         for (let i = 0; i < len;) {
-            let len = byte.unpack(buf, { bits: 32 }, 0)
-            let packet = buf.subarray(0, len)
-
+            let len = byte.unpack(arr, { bits: 32 }, i)
+            let packet = arr.subarray(i, len)
+            let message = MsgUtils.decode(packet)
+            this.ws_onmessage.call(this, message)
             i += len;
         }
-
-
     }
     // 连接关闭
     _onclose() {

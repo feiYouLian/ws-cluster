@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"runtime"
@@ -22,13 +22,13 @@ func main() {
 	// read config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	// new server
 	hub, err := hub.NewHub(cfg)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	hub.Run()

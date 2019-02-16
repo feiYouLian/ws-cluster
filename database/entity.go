@@ -30,10 +30,11 @@ type Server struct {
 	Port     int
 }
 
-// ChatMsg 单聊消息
+// ChatMsg 聊消息
 type ChatMsg struct {
 	ID       uint64
 	From     string
+	Scope    uint8
 	To       string
 	Type     uint8 //msg type
 	Text     string

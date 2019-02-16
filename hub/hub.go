@@ -74,23 +74,29 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	if header.Scope != wire.ScopeNull {
 		sendMsg := sendMessage{from: clientFlag, message: message, header: header}
 		err = p.saveMessage(&sendMsg)
+		st := wire.AckStateSent
 		if err != nil {
+			st = wire.AckStateFail
 			return err
 		}
+		// message ack
+		ackmsg, _ := wire.MakeAckMessage(header.ID, st)
+		p.PushMessage(ackmsg, nil)
+
 		p.hub.sendMessage <- sendMsg
 	}
 	msg, _ := wire.ReadMessage(bytes.NewReader(message))
 
 	switch header.Msgtype {
-	case wire.MsgTypeJoinGroup:
-		msgJoinGroup := msg.(*wire.MsgJoinGroup)
-		for _, group := range msgJoinGroup.Groups {
-			p.hub.groupCache.Join(group, p.entity.ID)
-		}
-	case wire.MsgTypeLeaveGroup:
-		msgLeaveGroup := msg.(*wire.MsgLeaveGroup)
-		for _, group := range msgLeaveGroup.Groups {
-			p.hub.groupCache.Leave(group, p.entity.ID)
+	case wire.MsgTypeGroupInOut:
+		msgGroup := msg.(*wire.MsgGroupInOut)
+		for _, group := range msgGroup.Groups {
+			switch msgGroup.InOut {
+			case wire.GroupIn:
+				p.hub.groupCache.Join(group, p.entity.ID)
+			case wire.GroupOut:
+				p.hub.groupCache.Leave(group, p.entity.ID)
+			}
 		}
 	}
 
@@ -101,27 +107,26 @@ func (p *ClientPeer) saveMessage(sendMsg *sendMessage) error {
 	header := sendMsg.header
 	message := sendMsg.message
 	// 如果是单聊消息，就保存到 db 中
-	if header.Scope == wire.ScopeChat {
-		msg, err := wire.ReadMessage(bytes.NewBuffer(message))
-		if err != nil {
-			return err
-		}
-		chatMsg, _ := msg.(*wire.Msgchat)
+	msg, err := wire.ReadMessage(bytes.NewBuffer(message))
+	if err != nil {
+		return err
+	}
+	chatMsg, _ := msg.(*wire.Msgchat)
 
-		done := make(chan bool)
-		chatmsg := &database.ChatMsg{
-			From:     p.entity.ID,
-			To:       header.To,
-			Type:     chatMsg.Type,
-			Text:     chatMsg.Text,
-			CreateAt: time.Now(),
-		}
-		p.hub.saveMessage <- saveMessage{chatmsg, done}
-		// wait
-		saved := <-done
-		if !saved {
-			return fmt.Errorf("message saved failed")
-		}
+	done := make(chan bool)
+	chatmsg := &database.ChatMsg{
+		From:     p.entity.ID,
+		To:       header.To,
+		Scope:    header.Scope,
+		Type:     chatMsg.Type,
+		Text:     chatMsg.Text,
+		CreateAt: time.Now(),
+	}
+	p.hub.saveMessage <- saveMessage{chatmsg, done}
+	// wait
+	saved := <-done
+	if !saved {
+		return fmt.Errorf("message saved failed")
 	}
 
 	return nil
@@ -256,7 +261,7 @@ func NewHub(config *config.Config) (*Hub, error) {
 		err := http.ListenAndServe(fmt.Sprintf(":%d", config.Server.Listen), nil)
 
 		if err != nil {
-			fmt.Println("ListenAndServe: ", err)
+			log.Println("ListenAndServe: ", err)
 			return
 		}
 	}()
@@ -301,8 +306,6 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	ack, _ := wire.ChatAckMessage(uint32(time.Now().Unix()), 2)
-	clientPeer.PushMessage(ack, nil)
 
 	hub.registClient <- clientPeer
 
@@ -325,7 +328,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Port: Port,
 	})
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 
@@ -375,7 +378,7 @@ func (h *Hub) initServer() error {
 		}
 		serverPeer, err := newServerPeer(h, conn, &server)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			continue
 		}
 		h.registServer <- serverPeer
@@ -462,7 +465,7 @@ func (h *Hub) handlesaveMessage() {
 	for {
 		select {
 		case msg := <-h.saveMessage:
-			fmt.Println(msg.msg.Text)
+			log.Println(msg.msg.Text)
 			err := h.messageStore.Save(msg.msg)
 			if err != nil {
 				msg.done <- false

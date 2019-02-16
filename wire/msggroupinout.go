@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+const (
+	// GroupIn join group
+	GroupIn = 1
+	// GroupOut leave group
+	GroupOut = 0
+)
+
 // MsgGroupInOut 进入、退出 群
 type MsgGroupInOut struct {
 	header *MessageHeader
@@ -40,5 +47,5 @@ func (m *MsgGroupInOut) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *MsgGroupInOut) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeJoinGroup, 0, ""}
+	return &MessageHeader{m.header.ID, MsgTypeGroupInOut, 0, ""}
 }

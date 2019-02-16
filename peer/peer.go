@@ -3,7 +3,6 @@ package peer
 import (
 	"bytes"
 	"container/list"
-	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -151,7 +150,7 @@ func (p *Peer) inMessageHandler() {
 			go func(message []byte) {
 				err = p.config.Listeners.OnMessage(msg)
 				if err != nil {
-					fmt.Println(err)
+					log.Println(err)
 				}
 			}(msg)
 		}

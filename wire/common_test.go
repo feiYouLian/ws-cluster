@@ -6,7 +6,7 @@ package wire
 
 import (
 	"bytes"
-	"fmt"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -16,8 +16,8 @@ func TestReadString(t *testing.T) {
 	buf := bytes.NewReader(bys)
 	val, _ := ReadUint8(buf)
 	val2, _ := ReadUint8(buf)
-	fmt.Println(val, val2)
-	fmt.Println(bys)
+	log.Println(val, val2)
+	log.Println(bys)
 }
 
 func TestWriteInt8(t *testing.T) {

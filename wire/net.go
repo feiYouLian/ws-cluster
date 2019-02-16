@@ -1,7 +1,7 @@
 package wire
 
 import (
-	"fmt"
+	"log"
 	"net"
 )
 
@@ -9,7 +9,7 @@ import (
 func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	defer conn.Close()
 
