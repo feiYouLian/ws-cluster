@@ -71,53 +71,52 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	if err != nil {
 		return err
 	}
-	if header.Scope != wire.ScopeNull {
-		sendMsg := sendMessage{from: clientFlag, message: message, header: header}
-		err = p.saveMessage(&sendMsg)
-		st := wire.AckStateSent
+	st := wire.AckStateSent
+
+	// 处理消息逻辑
+	switch header.Msgtype {
+	case wire.MsgTypeChat:
+		// 保存消息到 db
+		msg, _ := wire.ReadMessage(bytes.NewReader(message))
+		err = p.saveMessage(msg.(*wire.Msgchat))
 		if err != nil {
 			st = wire.AckStateFail
-			return err
 		}
-		// message ack
-		ackmsg, _ := wire.MakeAckMessage(header.ID, st)
-		p.PushMessage(ackmsg, nil)
-
-		p.hub.sendMessage <- sendMsg
-	}
-	msg, _ := wire.ReadMessage(bytes.NewReader(message))
-
-	switch header.Msgtype {
 	case wire.MsgTypeGroupInOut:
+		msg, _ := wire.ReadMessage(bytes.NewReader(message))
 		msgGroup := msg.(*wire.MsgGroupInOut)
 		for _, group := range msgGroup.Groups {
 			switch msgGroup.InOut {
 			case wire.GroupIn:
-				p.hub.groupCache.Join(group, p.entity.ID)
+				if err = p.hub.groupCache.Join(group, p.entity.ID); err != nil {
+					st = wire.AckStateFail
+				}
 			case wire.GroupOut:
-				p.hub.groupCache.Leave(group, p.entity.ID)
+				if err = p.hub.groupCache.Leave(group, p.entity.ID); err != nil {
+					st = wire.AckStateFail
+				}
 			}
 		}
 	}
 
+	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
+		// 消息转发
+		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: header}
+	}
+
+	// message ack
+	ackmsg, _ := wire.MakeAckMessage(header.ID, st)
+	p.PushMessage(ackmsg, nil)
+
 	return nil
 }
 
-func (p *ClientPeer) saveMessage(sendMsg *sendMessage) error {
-	header := sendMsg.header
-	message := sendMsg.message
-	// 如果是单聊消息，就保存到 db 中
-	msg, err := wire.ReadMessage(bytes.NewBuffer(message))
-	if err != nil {
-		return err
-	}
-	chatMsg, _ := msg.(*wire.Msgchat)
-
+func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
 	done := make(chan bool)
 	chatmsg := &database.ChatMsg{
 		From:     p.entity.ID,
-		To:       header.To,
-		Scope:    header.Scope,
+		To:       chatMsg.Header().To,
+		Scope:    chatMsg.Header().Scope,
 		Type:     chatMsg.Type,
 		Text:     chatMsg.Text,
 		CreateAt: time.Now(),
@@ -297,7 +296,8 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientPeer, err := newClientPeer(hub, conn, &database.Client{
-		ID: clientID,
+		ID:       clientID,
+		ServerID: hub.config.Server.ID,
 	})
 
 	if err != nil {
@@ -306,7 +306,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.registClient <- clientPeer
-
+	log.Printf("client in ,%v, clientid: %v", r.RemoteAddr, clientID)
 }
 
 // 处理来自服务器节点的连接
@@ -392,8 +392,18 @@ func (h *Hub) handlePeer() {
 	for {
 		select {
 		case peer := <-h.registClient:
-			h.clientPeers[peer.entity.ID] = peer
+			if p, ok := h.clientPeers[peer.entity.ID]; ok {
+				// 如果节点已经登陆，就把前一个 peer踢下线
+				p.Close()
+			} else {
+				client, err := h.clientCache.GetClient(peer.entity.ID)
+				// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
+				if err == nil && client != nil {
 
+				}
+			}
+			h.clientPeers[peer.entity.ID] = peer
+			h.clientCache.AddClient(peer.entity)
 		case peer := <-h.unregistClient:
 			if _, ok := h.clientPeers[peer.entity.ID]; ok {
 				delete(h.clientPeers, peer.entity.ID)
@@ -403,7 +413,6 @@ func (h *Hub) handlePeer() {
 			}
 		case peer := <-h.registServer:
 			h.serverPeers[peer.entity.ID] = peer
-
 		case peer := <-h.unregistServer:
 			if _, ok := h.serverPeers[peer.entity.ID]; ok {
 				delete(h.serverPeers, peer.entity.ID)
@@ -425,10 +434,9 @@ func (h *Hub) handleMessage() {
 			}
 			if header.Scope == wire.ScopeChat {
 				to := header.To
-				done := make(chan<- struct{})
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers[to]; ok {
-					client.PushMessage(msg.message, done)
+					client.PushMessage(msg.message, nil)
 					continue
 				}
 
@@ -445,7 +453,7 @@ func (h *Hub) handleMessage() {
 
 				// 消息转发过去
 				if server, ok := h.serverPeers[client.ServerID]; ok {
-					server.PushMessage(msg.message, done)
+					server.PushMessage(msg.message, nil)
 				}
 
 			} else if header.Scope == wire.ScopeGroup {
@@ -475,7 +483,7 @@ func (h *Hub) handlesaveMessage() {
 	for {
 		select {
 		case msg := <-h.saveMessage:
-			log.Println(msg.msg.Text)
+			log.Println("save message", msg.msg.From, msg.msg.Text)
 			err := h.messageStore.Save(msg.msg)
 			if err != nil {
 				msg.done <- false

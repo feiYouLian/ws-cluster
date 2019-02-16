@@ -141,12 +141,14 @@ func (p *Peer) inMessageHandler() {
 
 		// 从消息中取出多条单个消息一一处理
 		buf := bytes.NewReader(message)
-		for {
+		mlen := len(message)
+		for i := 0; i < mlen; {
 			msg, err := wire.ReadBytes(buf)
 			if err != nil {
 				// no more message
 				break
 			}
+			i = i + 4 + len(msg)
 			go func(message []byte) {
 				err = p.config.Listeners.OnMessage(msg)
 				if err != nil {
@@ -214,12 +216,13 @@ func (p *Peer) outMessageHandler() {
 				return
 			}
 			wire.WriteBytes(w, outMessage.message)
-			if outMessage.done != nil {
-				outMessage.done <- struct{}{}
-			}
-
 			if err := w.Close(); err != nil {
 				return
+			}
+			p.sendDone <- struct{}{}
+
+			if outMessage.done != nil {
+				outMessage.done <- struct{}{}
 			}
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))

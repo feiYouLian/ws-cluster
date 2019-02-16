@@ -8,12 +8,28 @@
 
 .Command-text{
   margin-right: 10px;
-  width: 300px;
+  width: 200px;
 }
 
 .Ul-msg{
-
+  height: 300px;
+  width: 500px;
+  margin: 10px;
 }
+
+.Ul-msg label{
+  margin-left: 10px;
+}
+.Ul-msg font{
+  margin-left: 10px;
+}
+
+.msg-li{
+  width: 100%;
+  border:#abc solid 1px;
+  margin: 10px;
+}
+
 .App-header {
   background-color: #282c34;
   min-height: 100vh;

@@ -16,7 +16,7 @@ it("buffer", () => {
 })
 
 it('message header', () => {
-    let header = new ws.MessageHeader(1, ws.MsgTypeConst.Chat, ws.ScopeConst.Chat, "2")
+    let header = new ws.MessageHeader(1, ws.MsgTypeConst.Chat, ws.ScopeConst.Client, "2")
 
     let buf = new ws.Buffer()
     header.encode(buf)
