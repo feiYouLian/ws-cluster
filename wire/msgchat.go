@@ -10,6 +10,7 @@ type Msgchat struct {
 	From   string
 	Type   uint8 // 1: text 2: image
 	Text   string
+	Extra  string
 }
 
 // decode decode
@@ -22,6 +23,9 @@ func (m *Msgchat) decode(r io.Reader) error {
 		return err
 	}
 	if m.Text, err = ReadString(r); err != nil {
+		return err
+	}
+	if m.Extra, err = ReadString(r); err != nil {
 		return err
 	}
 
@@ -38,6 +42,9 @@ func (m *Msgchat) encode(w io.Writer) error {
 		return err
 	}
 	if err = WriteString(w, m.Text); err != nil {
+		return err
+	}
+	if err = WriteString(w, m.Extra); err != nil {
 		return err
 	}
 	return nil

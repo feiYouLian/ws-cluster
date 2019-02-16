@@ -272,11 +272,10 @@ func NewHub(config *config.Config) (*Hub, error) {
 func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	clientID := q.Get("id")
-	name := q.Get("name")
 	nonce := q.Get("nonce")
 	digest := q.Get("digest")
 
-	if clientID == "" || name == "" || nonce == "" || digest == "" {
+	if clientID == "" || nonce == "" || digest == "" {
 		// 错误处理，断开
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -298,8 +297,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientPeer, err := newClientPeer(hub, conn, &database.Client{
-		ID:   clientID,
-		Name: name,
+		ID: clientID,
 	})
 
 	if err != nil {
@@ -339,7 +337,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 func (h *Hub) Run() {
 
 	// 连接到其它服务器节点
-	h.initServer()
+	h.handleOutbind()
 
 	go h.handlePeer()
 	go h.handleMessage()
@@ -347,7 +345,7 @@ func (h *Hub) Run() {
 	<-h.quit
 }
 
-func (h *Hub) initServer() error {
+func (h *Hub) handleOutbind() error {
 	servers, err := h.serverCache.GetServers()
 	if err != nil {
 		return err
@@ -428,16 +426,28 @@ func (h *Hub) handleMessage() {
 			if header.Scope == wire.ScopeChat {
 				to := header.To
 				done := make(chan<- struct{})
+				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers[to]; ok {
 					client.PushMessage(msg.message, done)
-				} else {
-					// 读取目标client所在的服务器
-					client, _ := h.clientCache.GetClient(to)
-					// 消息转发过去
-					if server, ok := h.serverPeers[client.ServerID]; ok {
-						server.PushMessage(msg.message, done)
-					}
+					continue
 				}
+
+				// 读取目标client所在的服务器
+				client, err := h.clientCache.GetClient(to)
+
+				// 如果读不到数据，就广播消息
+				if err != nil {
+					for _, serverpeer := range h.serverPeers {
+						serverpeer.PushMessage(msg.message, nil)
+					}
+					continue
+				}
+
+				// 消息转发过去
+				if server, ok := h.serverPeers[client.ServerID]; ok {
+					server.PushMessage(msg.message, done)
+				}
+
 			} else if header.Scope == wire.ScopeGroup {
 				group := header.To
 				// 如果消息是直接来源于 client。就转发到其它服务器
