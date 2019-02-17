@@ -168,7 +168,7 @@ const MsgTypeConst = {
 
 // ScopeConst 消息发送范围
 const ScopeConst = {
-    // ScopeChat msg to client
+    // ScopeClient msg to client
     Client: 1,
     // ScopeGroup msg to a group
     Group: 3,

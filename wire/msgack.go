@@ -46,5 +46,5 @@ func (m *MsgAck) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *MsgAck) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeAck, ScopeChat, m.header.To}
+	return &MessageHeader{m.header.ID, MsgTypeAck, ScopeClient, m.header.To}
 }

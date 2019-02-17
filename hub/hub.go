@@ -429,7 +429,7 @@ func (h *Hub) handleMessage() {
 			if header == nil {
 				return
 			}
-			if header.Scope == wire.ScopeChat {
+			if header.Scope == wire.ScopeClient {
 				to := header.To
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers[to]; ok {

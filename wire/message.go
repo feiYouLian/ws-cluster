@@ -18,8 +18,8 @@ const (
 const (
 	// ScopeNull no target
 	ScopeNull = uint8(0)
-	// ScopeChat msg to client
-	ScopeChat = uint8(1)
+	// ScopeClient msg to client
+	ScopeClient = uint8(1)
 	// ScopeGroup msg to a group
 	ScopeGroup = uint8(3)
 )

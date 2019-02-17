@@ -9,7 +9,7 @@ import (
 
 var b1 = []byte{1, 0, 0, 0, 3, 1, 1, 0, 0, 0, 50, 1, 0, 0, 0, 49, 3, 0, 0, 0, 0}
 
-var m1 = &Msgchat{&MessageHeader{1, MsgTypeChat, ScopeChat, "2"}, "1", 3, ""}
+var m1 = &Msgchat{&MessageHeader{1, MsgTypeChat, ScopeClient, "2"}, "1", 3, ""}
 
 func TestWriteMessage(t *testing.T) {
 	type args struct {

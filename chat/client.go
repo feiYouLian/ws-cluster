@@ -6,136 +6,102 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
-	"net/http"
+	"net/url"
 	"time"
 
+	"github.com/ws-cluster/wire"
+
 	"github.com/gorilla/websocket"
+	"github.com/ws-cluster/database"
+	"github.com/ws-cluster/peer"
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	secret = "xxx123456"
 )
 
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+// ClientPeer 代表一个客户端节点，消息收发的处理逻辑
+type ClientPeer struct {
+	*peer.Peer
+	entity *database.Client
 }
 
-// Client is a middleman between the websocket connection and the hub.
-type Client struct {
-	hub *Hub
-
-	// The websocket connection.
-	conn *websocket.Conn
-
-	// Buffered channel of outbound messages.
-	send chan []byte
+// OnMessage 接收消息
+func (p *ClientPeer) OnMessage(message []byte) error {
+	return nil
 }
 
-// readPump pumps messages from the websocket connection to the hub.
-//
-// The application runs readPump in a per-connection goroutine. The application
-// ensures that there is at most one reader on a connection by executing all
-// reads from this goroutine.
-func (c *Client) readPump() {
-	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
-	}()
-	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	for {
-		_, message, err := c.conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
-			break
-		}
-		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- message
+// OnDisconnect OnDisconnect
+func (p *ClientPeer) OnDisconnect() error {
+	return nil
+}
+
+func newClientPeer(conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+	clientPeer := &ClientPeer{
+		entity: client,
 	}
+	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
+		Listeners: &peer.MessageListeners{
+			OnMessage:    clientPeer.OnMessage,
+			OnDisconnect: clientPeer.OnDisconnect,
+		},
+	})
+
+	clientPeer.Peer = peer
+	clientPeer.SetConnection(conn)
+
+	return clientPeer, nil
 }
 
-// writePump pumps messages from the hub to the websocket connection.
-//
-// A goroutine running writePump is started for each connection. The
-// application ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
-func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// The hub closed the channel.
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
+func login(clientID, addr, secret string) (*ClientPeer, error) {
+	nonce := fmt.Sprint(time.Now().UnixNano())
+	h := md5.New()
+	io.WriteString(h, clientID)
+	io.WriteString(h, nonce)
+	io.WriteString(h, secret)
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
+	query := fmt.Sprintf("id=%v&nonce=%v&digest=%v", clientID, nonce, hex.EncodeToString(h.Sum(nil)))
 
-			// Add queued chat messages to the current websocket message.
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write(newline)
-				w.Write(<-c.send)
-			}
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/client", RawQuery: query}
+	log.Printf("connecting to %s", u.String())
 
-			if err := w.Close(); err != nil {
-				return
-			}
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Println("dial:", err)
+		return nil, err
 	}
+	client := database.Client{
+		ID: clientID,
+	}
+	clietPeer, err := newClientPeer(conn, &client)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	return clietPeer, nil
 }
 
-// serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	log.Println(q.Get("id"))
-
-	conn, err := upgrader.Upgrade(w, r, nil)
+func robot(clientID string) {
+	peer, err := login(clientID, "localhost:8080", secret)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	client.hub.register <- client
+	msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 1, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: "1"})
+	chatMsg := msg.(*wire.Msgchat)
+	chatMsg.From = clientID
+	chatMsg.Type = 1
+	chatMsg.Text = "hellow"
+	buf := &bytes.Buffer{}
+	wire.WriteMessage(buf, chatMsg)
+	peer.PushMessage(buf.Bytes(), nil)
+}
 
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
-	go client.writePump()
-	go client.readPump()
+func main() {
+	robot("1")
 }

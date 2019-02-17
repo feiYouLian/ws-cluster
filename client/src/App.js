@@ -17,7 +17,8 @@ class App extends Component {
       login: false,
       scope: 0,
       msg_text: "test",
-      clientId: Date.now() + "",  // 生成一个随机 id, 登陆服务器,方便测试
+      clientId: "1",
+      // clientId: Date.now() + "",  // 生成一个随机 id, 登陆服务器,方便测试
     }
     // 密钥
     const secret = "xxx123456"

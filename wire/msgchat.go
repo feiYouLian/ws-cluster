@@ -52,5 +52,5 @@ func (m *Msgchat) encode(w io.Writer) error {
 
 // Header 头信息
 func (m *Msgchat) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeChat, ScopeChat, m.header.To}
+	return &MessageHeader{m.header.ID, MsgTypeChat, ScopeClient, m.header.To}
 }
