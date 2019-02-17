@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -156,5 +157,9 @@ func InitRedis(ip string, port int, pass string) *redis.Client {
 		Addr:     fmt.Sprintf("%s:%d", ip, port),
 		Password: pass,
 	})
+	_, err := redisdb.Ping().Result()
+	if err != nil {
+		log.Println(err)
+	}
 	return redisdb
 }

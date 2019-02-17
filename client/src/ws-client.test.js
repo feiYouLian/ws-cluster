@@ -28,5 +28,26 @@ it('message header', () => {
     header2.decode(new ws.Buffer(wantBytes))
 
     deepEqual(header2, header)
-    
+
 });
+
+it('chat', () => {
+    const secret = "xxx123456"
+    let wsclient = new ws.WsClient({ url: "ws://localhost:8080", secret })
+    wsclient.onOpen = () => {
+
+    }
+    wsclient.onMessage = (msg) => {
+        console.log(msg)
+    }
+    wsclient.login("1")
+
+    let wsclient2 = new ws.WsClient({ url: "ws://localhost:8080", secret })
+    wsclient2.onOpen = () => {
+        wsclient2.sendToClient('1',1,"hello")
+    }
+    wsclient2.onMessage = (msg) => {
+        
+    }
+    wsclient2.login("2")
+})

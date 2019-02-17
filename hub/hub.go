@@ -67,23 +67,21 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message []byte) error {
-	header, err := wire.ReadHeader(bytes.NewReader(message))
+	msg, err := wire.ReadMessage(bytes.NewReader(message))
 	if err != nil {
 		return err
 	}
 	st := wire.AckStateSent
 
 	// 处理消息逻辑
-	switch header.Msgtype {
+	switch msg.Header().Msgtype {
 	case wire.MsgTypeChat:
 		// 保存消息到 db
-		msg, _ := wire.ReadMessage(bytes.NewReader(message))
 		err = p.saveMessage(msg.(*wire.Msgchat))
 		if err != nil {
 			st = wire.AckStateFail
 		}
 	case wire.MsgTypeGroupInOut:
-		msg, _ := wire.ReadMessage(bytes.NewReader(message))
 		msgGroup := msg.(*wire.MsgGroupInOut)
 		for _, group := range msgGroup.Groups {
 			switch msgGroup.InOut {
@@ -99,15 +97,14 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 		}
 	}
 
-	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
+	if msg.Header().Scope != wire.ScopeNull && st != wire.AckStateFail {
 		// 消息转发
-		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: header}
+		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: msg.Header()}
 	}
 
 	// message ack
-	ackmsg, _ := wire.MakeAckMessage(header.ID, st)
+	ackmsg, _ := wire.MakeAckMessage(msg.Header().ID, st)
 	p.PushMessage(ackmsg, nil)
-
 	return nil
 }
 

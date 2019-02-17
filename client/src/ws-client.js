@@ -52,6 +52,7 @@ class WsClient {
             console.error("websocket open failed! event_type: " + evt.type)
             this.onOpen(false)
         }
+
     }
     // 接收到消息之后处理
     _onmessage(data) {
@@ -118,12 +119,13 @@ class WsClient {
     }
     // 发送一个消息对象，此消息对象必须 extends Message
     send(msg) {
-        if (msg === undefined) {
+        if (!msg) {
             return
         }
         let bytes = MsgUtils.encode(msg)
-        console.log(bytes)
-        this.conn.send(bytes)
+        console.debug(bytes)
+        if (bytes != null && bytes.length > 0)
+            this.conn.send(bytes)
     }
     joinGroups(groups) {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
@@ -151,7 +153,7 @@ class WsClient {
         })
     }
     msgAck(id, to, state, desc) {
-        let header = new MessageHeader(id, MsgTypeConst.GroupInOut, ScopeConst.Chat, to)
+        let header = new MessageHeader(id, MsgTypeConst.Ack, ScopeConst.Chat, to)
         let msg = new MsgAck(header, state, desc)
         this.send(msg)
     }
@@ -364,23 +366,36 @@ const MsgUtils = {
      * 解码uint8array，返回一个消息对象
      */
     decode: (uint8array) => {
-        let buf = new Buffer(uint8array)
-        let header = new MessageHeader()
-        header.decode(buf)
-        let message = MsgUtils.makeEmptyMsg(header)
-        message.decode(buf)
-        return message
+        try {
+            let buf = new Buffer(uint8array)
+            let header = new MessageHeader()
+            header.decode(buf)
+            let message = MsgUtils.makeEmptyMsg(header)
+            if (!message) {
+                return null
+            }
+            message.decode(buf)
+            return message
+        } catch (error) {
+            console.error(error)
+        }
+        return null
     },
     /**
      * 编码message，返回一个 UInt8Array
      */
     encode: (message) => {
-        let buf = new Buffer(null, 4)
-        message.Header().encode(buf)
-        message.encode(buf)
-        // 把消息长度写到前字节
-        buf.setUint32(0, buf.length - 4)
-        return buf.getBytes()
+        try {
+            let buf = new Buffer(null, 4)
+            message.Header().encode(buf)
+            message.encode(buf)
+            // 把消息长度写到前字节
+            buf.setUint32(0, buf.length - 4)
+            return buf.getBytes()
+        } catch (error) {
+            console.error(error)
+        }
+        return []
     },
     makeEmptyMsg: (header) => {
         switch (header.msgType) {

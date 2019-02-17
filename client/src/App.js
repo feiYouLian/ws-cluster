@@ -21,9 +21,9 @@ class App extends Component {
     }
     // 密钥
     const secret = "xxx123456"
-    this.ws = new ws.WsClient({ url: "ws://localhost:8080", secret })
-    this.ws.onOpen = this.onOpen.bind(this)
-    this.ws.onMessage = this.wsOnMessage.bind(this)
+    this.wsclient = new ws.WsClient({ url: "ws://localhost:8080", secret })
+    this.wsclient.onOpen = this.onOpen.bind(this)
+    this.wsclient.onMessage = this.wsOnMessage.bind(this)
   }
   onOpen(login) {
     console.debug(login)
@@ -31,11 +31,11 @@ class App extends Component {
     this.setState({ login })
   }
   componentDidMount() {
-    this.ws.login(this.state.clientId)
+    this.wsclient.login(this.state.clientId)
   }
   componentWillUnmount() {
     // 退出服务器
-    this.ws.close()
+    this.wsclient.close()
   }
   wsOnMessage(msg) {
     console.log("read a message", msg)
@@ -54,7 +54,7 @@ class App extends Component {
   sendMessage(scope, to, text) {
     let { msgs } = this.state
 
-    let msg = this.ws.sendToClient(to, scope, text)
+    let msg = this.wsclient.sendToClient(to, scope, text)
     msg.ackState = 0
 
     msgs.push(msg)
@@ -81,12 +81,12 @@ class App extends Component {
       <div>
         <label>Text:{msg.text}</label>
         <label>Extra:{msg.extra}</label>
-        <label>From:{msg.from === this.ws.client.id ? "自己" : msg.from}</label>
-        <font color="red">{msg.from !== this.ws.client.id ? "" : ("状态：" + AckStateMapping[msg.ackState])}</font>
+        <label>From:{msg.from === this.wsclient.client.id ? "自己" : msg.from}</label>
+        <font color="red">{msg.from !== this.wsclient.client.id ? "" : ("状态：" + AckStateMapping[msg.ackState])}</font>
         {
-          msg.from !== this.ws.client.id ? (<button onClick={e => {
+          msg.from !== this.wsclient.client.id ? (<button onClick={e => {
             // ack message read
-            this.ws.msgAck(msg.header.id, msg.from, 3, "")
+            this.wsclient.msgAck(msg.header.id, msg.from, 3, "")
           }}>read it</button>) : ""
         }
       </div>
