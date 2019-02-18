@@ -9,6 +9,13 @@ const AckStateMapping = {
   2: "sent",
   3: "read",
 }
+
+const MsgTypeMapping = {
+  1: "ACK",
+  3: "聊天消息",
+  5: "群操作",
+}
+
 class App extends Component {
   constructor(props) {
     super(props)
@@ -28,11 +35,15 @@ class App extends Component {
   }
   onOpen(login) {
     console.debug(login)
+    let { msgs } = this.state;
+
     // 默认登陆状态
     this.setState({ login })
 
-    if(login){
-      this.wsclient.joinGroups(["notify"])
+    if (login) {
+      let msg = this.wsclient.joinGroups(["notify"])
+      msgs.push(msg)
+      this.setState({ msgs })
     }
   }
   componentDidMount() {
@@ -65,6 +76,12 @@ class App extends Component {
     msgs.push(msg)
     this.setState({ msgs })
   }
+  leaveGroups(group) {
+    let { msgs } = this.state
+    let msg = this.wsclient.leaveGroups([group])
+    msgs.push(msg)
+    this.setState({ msgs })
+  }
   renderHeader(header) {
     let scope = "";
     if (header.scope > 0) {
@@ -73,7 +90,7 @@ class App extends Component {
     return (
       <div>
         <label>ID:{header.id} </label>
-        <label>msgType:{header.msgType} </label>
+        <label>msgType:{MsgTypeMapping[header.msgType]} </label>
         <label>scope:{scope} </label>
         <label>to:{header.to || ""} </label>
       </div>
@@ -94,6 +111,16 @@ class App extends Component {
             this.wsclient.msgAck(msg.header.id, msg.from, 3, "")
           }}>read it</button>) : ""
         }
+      </div>
+    </div>)
+  }
+  renderGroupMsg(msg, i) {
+    // 应答消息的 ID 与 发送时的 ID 一样
+    return (<div key={i} className="msg-li">
+      {this.renderHeader(msg.header)}
+      <div>
+        <label>操作:{msg.inout === 1 ? "进群" : "退群"}</label>
+        <label>Groups:{msg.groups}</label>
       </div>
     </div>)
   }
@@ -120,6 +147,9 @@ class App extends Component {
           <input value="send" type="button" onClick={e => {
             this.sendMessage(scope, to, msg_text)
           }}></input>
+          <input value="退出群" type="button" onClick={e => {
+            this.leaveGroups("notify")
+          }}></input>
         </div>
         <div>
           clientId:[{clientId}]当前登陆状态： {login ? "已登陆" : "未登陆"}
@@ -129,6 +159,8 @@ class App extends Component {
             msgs.map((msg, i) => {
               if (msg.header.msgType === ws.MsgTypeConst.Chat) {
                 return this.renderChatMsg(msg, i)
+              } else if (msg.header.msgType === ws.MsgTypeConst.GroupInOut) {
+                return this.renderGroupMsg(msg, i)
               }
               return (<div>none</div>)
             }

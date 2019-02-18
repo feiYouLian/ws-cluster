@@ -139,6 +139,7 @@ class WsClient {
         groups.forEach(group => {
             this.groups.add(group)
         })
+        return msg
     }
     leaveGroups(groups) {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
@@ -151,6 +152,7 @@ class WsClient {
         groups.forEach(group => {
             this.groups.delete(group)
         })
+        return msg
     }
     msgAck(id, to, state, desc) {
         let header = new MessageHeader(id, MsgTypeConst.Ack, ScopeConst.Chat, to)
