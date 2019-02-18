@@ -219,11 +219,12 @@ func (p *Peer) outMessageHandler() {
 			if err := w.Close(); err != nil {
 				return
 			}
-			p.sendDone <- struct{}{}
 
 			if outMessage.done != nil {
 				outMessage.done <- struct{}{}
 			}
+
+			p.sendDone <- struct{}{}
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -237,6 +238,17 @@ func (p *Peer) outMessageHandler() {
 	}
 }
 
+// SendMessage send a message to peer
+func (p *Peer) SendMessage(message wire.Message, doneChan chan<- struct{}) error {
+	buf := &bytes.Buffer{}
+	err := wire.WriteMessage(buf, message)
+	if err != nil {
+		return err
+	}
+	p.PushMessage(buf.Bytes(), doneChan)
+	return nil
+}
+
 // PushMessage 把消息写到队列中，等待处理
 func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
 	if p.connected == 0 {
@@ -247,6 +259,7 @@ func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
 		}
 		return
 	}
+	log.Println("send message", message)
 	p.outQueue <- outMessage{message: message, done: doneChan}
 }
 

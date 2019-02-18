@@ -67,6 +67,7 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message []byte) error {
+	log.Println("onmessage", message)
 	msg, err := wire.ReadMessage(bytes.NewReader(message))
 	if err != nil {
 		return err
@@ -79,6 +80,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 		// 保存消息到 db
 		err = p.saveMessage(msg.(*wire.Msgchat))
 		if err != nil {
+			log.Println(err)
 			st = wire.AckStateFail
 		}
 	case wire.MsgTypeGroupInOut:
@@ -98,6 +100,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	}
 
 	if msg.Header().Scope != wire.ScopeNull && st != wire.AckStateFail {
+		log.Println("message forward to hub", msg.Header())
 		// 消息转发
 		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: msg.Header()}
 	}
@@ -463,6 +466,7 @@ func (h *Hub) handleMessage() {
 				}
 				// 读取群用户列表。转发
 				clients, _ := h.groupCache.GetGroupMembers(group)
+				log.Println("send group message to ", clients)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
 						client.PushMessage(msg.message, nil)

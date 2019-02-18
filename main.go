@@ -13,6 +13,7 @@ import (
 )
 
 func handleInterrupt(hub *hub.Hub, sc chan os.Signal) {
+	
 	hub.Close()
 }
 

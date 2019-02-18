@@ -30,6 +30,10 @@ class App extends Component {
     console.debug(login)
     // 默认登陆状态
     this.setState({ login })
+
+    if(login){
+      this.wsclient.joinGroups(["notify"])
+    }
   }
   componentDidMount() {
     this.wsclient.login(this.state.clientId)

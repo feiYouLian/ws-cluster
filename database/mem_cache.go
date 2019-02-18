@@ -1,6 +1,7 @@
 package database
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -30,12 +31,16 @@ func (c *MemGroupCache) Join(group string, clientID string) error {
 			Name:    group,
 			Clients: make(map[string]bool),
 		}
+		g = c.groups[group]
 	}
 	c.Mutex.Unlock()
 
+	g.rw.Lock()
 	if _, ok := g.Clients[clientID]; !ok {
 		g.Clients[clientID] = true
 	}
+	g.rw.Unlock()
+	log.Println(clientID, "join group ", group)
 	return nil
 }
 
@@ -53,7 +58,19 @@ func (c *MemGroupCache) Leave(group string, clientID string) error {
 
 // GetGroupMembers 取群中成员
 func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
-	return nil, nil
+	g, ok := c.groups[group]
+	if !ok {
+		return nil, nil
+	}
+	g.rw.RLock()
+	mems := make([]string, len(g.Clients))
+	index := 0
+	for key := range g.Clients {
+		mems[index] = key
+		index++
+	}
+	g.rw.RUnlock()
+	return mems, nil
 }
 
 func clean(c *MemGroupCache) {

@@ -112,7 +112,7 @@ func WriteMessage(w io.Writer, msg Message) error {
 // MakeEmptyMessage 创建一个空的消息体
 func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 	var msg Message
-	switch uint8(header.Msgtype) {
+	switch header.Msgtype {
 	case MsgTypeChat:
 		msg = &Msgchat{header: header}
 	case MsgTypeAck:
@@ -122,7 +122,6 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", header.Msgtype)
 	}
-
 	return msg, nil
 }
 

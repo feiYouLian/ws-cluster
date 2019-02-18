@@ -5,13 +5,14 @@
 package main
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net/url"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/ws-cluster/wire"
@@ -86,7 +87,7 @@ func login(clientID, addr, secret string) (*ClientPeer, error) {
 	return clietPeer, nil
 }
 
-func robot(clientID string) {
+func robot(clientID string, quit chan os.Signal) {
 	peer, err := login(clientID, "localhost:8080", secret)
 	if err != nil {
 		log.Println(err)
@@ -96,12 +97,31 @@ func robot(clientID string) {
 	chatMsg := msg.(*wire.Msgchat)
 	chatMsg.From = clientID
 	chatMsg.Type = 1
-	chatMsg.Text = "hellow"
-	buf := &bytes.Buffer{}
-	wire.WriteMessage(buf, chatMsg)
-	peer.PushMessage(buf.Bytes(), nil)
+	chatMsg.Text = "hello, im robot"
+
+	done := make(chan struct{})
+
+	peer.SendMessage(chatMsg, done)
+	<-done
+
+	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "notify"})
+	chatMsg2 := msg2.(*wire.Msgchat)
+	chatMsg2.From = clientID
+	chatMsg2.Type = 1
+	chatMsg2.Text = "hello, group message"
+
+	peer.SendMessage(chatMsg2, done)
+
+	<-done
+	// <-quit
+	// peer.Peer.Close()
+
 }
 
 func main() {
-	robot("1")
+	// listen sys.exit
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, os.Interrupt)
+
+	robot("2", sc)
 }
