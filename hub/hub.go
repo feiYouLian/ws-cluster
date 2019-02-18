@@ -52,9 +52,21 @@ func (p *ServerPeer) OnDisconnect() error {
 	p.hub.unregistServer <- p
 
 	// 判断当前节点是否为主节点
-
+	servers, err := p.hub.serverCache.GetServers()
+	if err != nil {
+		return err
+	}
+	isMaster := true
+	for _, s := range servers {
+		if s.ID < p.hub.ServerID { // 最小的 id 就是存活最久的服务，就是主服务
+			isMaster = false
+		}
+	}
 	// 如果是主节点，维护服务器列表
-
+	if isMaster {
+		p.hub.serverCache.DelServer(p.entity.ID)
+		p.hub.clientCache.DelAll(p.entity.ID)
+	}
 	return nil
 }
 
@@ -67,7 +79,6 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message []byte) error {
-	log.Println("onmessage", message)
 	msg, err := wire.ReadMessage(bytes.NewReader(message))
 	if err != nil {
 		return err
@@ -193,6 +204,7 @@ type saveMessage struct {
 type Hub struct {
 	upgrader    *websocket.Upgrader
 	config      *config.Config
+	ServerID    uint64
 	clientCache database.ClientCache
 	groupCache  database.GroupCache
 	serverCache database.ServerCache
@@ -232,6 +244,7 @@ func NewHub(config *config.Config) (*Hub, error) {
 	hub := &Hub{
 		upgrader:       upgrader,
 		config:         config,
+		ServerID:       config.Server.ID,
 		clientCache:    database.NewRedisClientCache(redis),
 		serverCache:    database.NewRedisServerCache(redis),
 		groupCache:     database.NewMemGroupCache(),
@@ -297,7 +310,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	clientPeer, err := newClientPeer(hub, conn, &database.Client{
 		ID:       clientID,
-		ServerID: hub.config.Server.ID,
+		ServerID: hub.ServerID,
 	})
 
 	if err != nil {
@@ -351,7 +364,7 @@ func (h *Hub) handleOutbind() error {
 		return err
 	}
 	serverSelf := database.Server{
-		ID:   h.config.Server.ID,
+		ID:   h.ServerID,
 		IP:   wire.GetOutboundIP().String(),
 		Port: h.config.Server.Listen,
 	}

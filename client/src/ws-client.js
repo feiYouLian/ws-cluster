@@ -41,6 +41,7 @@ class WsClient {
             console.log("websocket open success! event_type: " + evt.type)
             this.onOpen(true)
             this.client.id = id
+            this.reconnectTimes = 0
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
@@ -61,7 +62,6 @@ class WsClient {
         for (let i = 0; i < len;) {
             let len = byte.unpack(arr, { bits: 32 }, i)
             let packet = arr.subarray(i + 4, len + 4)
-            console.log(packet)
             let message = MsgUtils.decode(packet)
             this.onMessage(message)
             i += 4 + len;
@@ -81,6 +81,10 @@ class WsClient {
             return true
         }
         setTimeout(() => {
+            if (this.reconnectTimes > 30) {
+                return
+            }
+            this.reconnectTimes = (this.reconnectTimes || 0) + 1
             this.login(this.client.id);
         }, 1000);
     }
@@ -132,7 +136,9 @@ class WsClient {
             console.error("joinGroups: groups no found")
             return
         }
-
+        if (groups.constructor.name !== "Array") {
+            groups = [groups]
+        }
         let header = new MessageHeader(getId(), MsgTypeConst.GroupInOut)
         let msg = new MsgGroupInOut(header, 1, groups)
         this.send(msg)
@@ -145,6 +151,9 @@ class WsClient {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
             console.error("joinGroups: groups no found")
             return
+        }
+        if (groups.constructor.name !== "Array") {
+            groups = [groups]
         }
         let header = new MessageHeader(getId(), MsgTypeConst.GroupInOut)
         let msg = new MsgGroupInOut(header, 0, groups)

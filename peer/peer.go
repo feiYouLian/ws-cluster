@@ -259,7 +259,7 @@ func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
 		}
 		return
 	}
-	log.Println("send message", message)
+	// log.Println("send message", message)
 	p.outQueue <- outMessage{message: message, done: doneChan}
 }
 

@@ -26,40 +26,7 @@ const (
 	secret = "xxx123456"
 )
 
-// ClientPeer 代表一个客户端节点，消息收发的处理逻辑
-type ClientPeer struct {
-	*peer.Peer
-	entity *database.Client
-}
-
-// OnMessage 接收消息
-func (p *ClientPeer) OnMessage(message []byte) error {
-	return nil
-}
-
-// OnDisconnect OnDisconnect
-func (p *ClientPeer) OnDisconnect() error {
-	return nil
-}
-
-func newClientPeer(conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
-	clientPeer := &ClientPeer{
-		entity: client,
-	}
-	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
-		Listeners: &peer.MessageListeners{
-			OnMessage:    clientPeer.OnMessage,
-			OnDisconnect: clientPeer.OnDisconnect,
-		},
-	})
-
-	clientPeer.Peer = peer
-	clientPeer.SetConnection(conn)
-
-	return clientPeer, nil
-}
-
-func login(clientID, addr, secret string) (*ClientPeer, error) {
+func login(clientID, addr, secret string) (*peer.Peer, error) {
 	nonce := fmt.Sprint(time.Now().UnixNano())
 	h := md5.New()
 	io.WriteString(h, clientID)
@@ -79,12 +46,22 @@ func login(clientID, addr, secret string) (*ClientPeer, error) {
 	client := database.Client{
 		ID: clientID,
 	}
-	clietPeer, err := newClientPeer(conn, &client)
-	if err != nil {
-		log.Println(err)
-		return nil, err
+	OnMessage := func(message []byte) error {
+		log.Println(message)
+		return nil
 	}
-	return clietPeer, nil
+	OnDisconnect := func() error {
+		return nil
+	}
+	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
+		Listeners: &peer.MessageListeners{
+			OnMessage:    OnMessage,
+			OnDisconnect: OnDisconnect,
+		},
+	})
+	peer.SetConnection(conn)
+
+	return peer, nil
 }
 
 func robot(clientID string, quit chan os.Signal) {
@@ -123,5 +100,5 @@ func main() {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
 
-	robot("2", sc)
+	robot("system", sc)
 }
