@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/ws-cluster/wire"
@@ -47,7 +48,7 @@ func login(clientID, addr, secret string) (*peer.Peer, error) {
 		ID: clientID,
 	}
 	OnMessage := func(message []byte) error {
-		log.Println(message)
+		log.Println("OnMessage", message)
 		return nil
 	}
 	OnDisconnect := func() error {
@@ -70,16 +71,29 @@ func robot(clientID string, quit chan os.Signal) {
 		log.Println(err)
 		return
 	}
-	msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 1, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: "1"})
-	chatMsg := msg.(*wire.Msgchat)
-	chatMsg.From = clientID
-	chatMsg.Type = 1
-	chatMsg.Text = "hello, im robot"
+
+	ws := sync.WaitGroup{}
+	// 测试发送100条消息时间
+	t1 := time.Now().UnixNano()
+	for index := uint32(0); index < 100; index++ {
+		ws.Add(1)
+		go func(i uint32) {
+			done := make(chan struct{})
+			msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: "1"})
+			chatMsg := msg.(*wire.Msgchat)
+			chatMsg.From = clientID
+			chatMsg.Type = 1
+			chatMsg.Text = fmt.Sprint("hello, im robot", i)
+			peer.SendMessage(chatMsg, done)
+			<-done
+			ws.Done()
+		}(index)
+	}
+	ws.Wait()
+	t2 := time.Now().UnixNano()
+	log.Println("cost time:", (t2-t1)/1000)
 
 	done := make(chan struct{})
-
-	peer.SendMessage(chatMsg, done)
-	<-done
 
 	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "notify"})
 	chatMsg2 := msg2.(*wire.Msgchat)

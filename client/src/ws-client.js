@@ -80,13 +80,14 @@ class WsClient {
             }
             return true
         }
+        // 1 min 内尝试重连
         setTimeout(() => {
-            if (this.reconnectTimes > 30) {
+            if (this.reconnectTimes > 20) {
                 return
             }
             this.reconnectTimes = (this.reconnectTimes || 0) + 1
             this.login(this.client.id);
-        }, 1000);
+        }, 3000);
     }
     /**
      * 发送消息到一个 client, 
@@ -127,7 +128,6 @@ class WsClient {
             return
         }
         let bytes = MsgUtils.encode(msg)
-        console.debug(bytes)
         if (bytes != null && bytes.length > 0)
             this.conn.send(bytes)
     }

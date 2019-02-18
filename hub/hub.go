@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ws-cluster/config"
@@ -232,7 +233,15 @@ func NewHub(config *config.Config) (*Hub, error) {
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
-			return true
+			if config.Server.Origin == "*" {
+				return true
+			}
+			rOrigin := r.Header.Get("Origin")
+			if strings.Contains(config.Server.Origin, rOrigin) {
+				return true
+			}
+			log.Println("refuse", rOrigin)
+			return false
 		},
 	}
 	// build a client instance of redis

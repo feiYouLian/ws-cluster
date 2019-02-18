@@ -47,17 +47,11 @@ type MysqlConfig struct {
 	DbName   string
 }
 
-// MessageConfig message config
-type MessageConfig struct {
-	QueueLen int
-}
-
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
 type Config struct {
-	Server  ServerConfig
-	Redis   RedisConfig
-	Mysql   MysqlConfig
-	Message MessageConfig
+	Server ServerConfig
+	Redis  RedisConfig
+	Mysql  MysqlConfig
 }
 
 // LoadConfig LoadConfig
@@ -85,13 +79,6 @@ func LoadConfig() (*Config, error) {
 	section = cfg.Section("mysql")
 	config.Mysql = MysqlConfig{}
 	err = section.MapTo(&config.Mysql)
-	if err != nil {
-		return nil, err
-	}
-
-	section = cfg.Section("message")
-	config.Message = MessageConfig{}
-	err = section.MapTo(&config.Message)
 	if err != nil {
 		return nil, err
 	}

@@ -13,7 +13,7 @@ import (
 )
 
 func handleInterrupt(hub *hub.Hub, sc chan os.Signal) {
-	
+
 	hub.Close()
 }
 
@@ -23,14 +23,12 @@ func main() {
 	// read config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Println(err)
-		return
+		log.Panicln(err)
 	}
 	// new server
 	hub, err := hub.NewHub(cfg)
 	if err != nil {
-		log.Println(err)
-		return
+		log.Panicln(err)
 	}
 	hub.Run()
 
