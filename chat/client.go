@@ -27,7 +27,7 @@ const (
 	secret = "xxx123456"
 )
 
-func login(clientID, addr, secret string) (*peer.Peer, error) {
+func newPeer(clientID, addr, secret string, OnMessage func(message []byte) error, OnDisconnect func() error) (*peer.Peer, error) {
 	nonce := fmt.Sprint(time.Now().UnixNano())
 	h := md5.New()
 	io.WriteString(h, clientID)
@@ -39,43 +39,89 @@ func login(clientID, addr, secret string) (*peer.Peer, error) {
 	u := url.URL{Scheme: "ws", Host: addr, Path: "/client", RawQuery: query}
 	log.Printf("connecting to %s", u.String())
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Println("dial:", err)
-		return nil, err
-	}
 	client := database.Client{
 		ID: clientID,
 	}
-	OnMessage := func(message []byte) error {
-		log.Println("OnMessage", message)
-		return nil
-	}
-	OnDisconnect := func() error {
-		return nil
-	}
+
 	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    OnMessage,
 			OnDisconnect: OnDisconnect,
 		},
 	})
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Println("dial:", err)
+		return nil, err
+	}
 	peer.SetConnection(conn)
 
 	return peer, nil
 }
 
-func robot(clientID string, quit chan os.Signal) {
-	peer, err := login(clientID, "localhost:8080", secret)
-	if err != nil {
-		log.Println(err)
-		return
+// ClientPeer ClientPeer
+type ClientPeer struct {
+	*peer.Peer
+	// AutoConn 是否自动重连
+	AutoConn   bool
+	clientID   string
+	serverAddr string
+	secret     string
+}
+
+func newClientPeer(secret, clientID, addr string, autoConn bool) (*ClientPeer, error) {
+	clientPeer := &ClientPeer{
+		AutoConn:   autoConn,
+		clientID:   clientID,
+		serverAddr: addr,
+		secret:     secret,
+	}
+	if err := clientPeer.newPeer(); err != nil {
+		return nil, err
 	}
 
+	return clientPeer, nil
+}
+
+// OnMessage OnMessage
+func (p *ClientPeer) OnMessage(message []byte) error {
+	log.Println("OnMessage", message)
+	return nil
+}
+
+func (p *ClientPeer) newPeer() error {
+	peer, err := newPeer(p.clientID, p.serverAddr, p.secret, p.OnMessage, p.OnDisconnect)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	p.Peer = peer
+	return nil
+}
+
+// OnDisconnect OnDisconnect
+func (p *ClientPeer) OnDisconnect() error {
+	if p.AutoConn {
+		for i := 0; i < 60; i++ {
+			time.Sleep(time.Second * 3)
+			if err := p.newPeer(); err == nil {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func robot(clientID string, quit chan os.Signal) {
+	peer, err := newClientPeer(secret, clientID, "localhost:8080", true)
+	if err != nil {
+		log.Panicln(err)
+	}
 	ws := sync.WaitGroup{}
 	// 测试发送100条消息时间
 	t1 := time.Now().UnixNano()
-	for index := uint32(0); index < 100; index++ {
+	for index := uint32(0); index < 10; index++ {
 		ws.Add(1)
 		go func(i uint32) {
 			done := make(chan struct{})
@@ -104,7 +150,7 @@ func robot(clientID string, quit chan os.Signal) {
 	peer.SendMessage(chatMsg2, done)
 
 	<-done
-	// <-quit
+	<-quit
 	// peer.Peer.Close()
 
 }

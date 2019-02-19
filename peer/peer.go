@@ -46,9 +46,6 @@ type Config struct {
 	// Maximum message size allowed from peer.
 	MaxMessageSize int
 
-	// MessageQueueLen message len
-	MessageQueueLen int
-
 	Listeners *MessageListeners
 }
 

@@ -47,11 +47,17 @@ type MysqlConfig struct {
 	DbName   string
 }
 
+// PeerConfig PeerConfig
+type PeerConfig struct {
+	MaxMessageSize int
+}
+
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
 type Config struct {
 	Server ServerConfig
 	Redis  RedisConfig
 	Mysql  MysqlConfig
+	Peer   PeerConfig
 }
 
 // LoadConfig LoadConfig
@@ -79,6 +85,12 @@ func LoadConfig() (*Config, error) {
 	section = cfg.Section("mysql")
 	config.Mysql = MysqlConfig{}
 	err = section.MapTo(&config.Mysql)
+	if err != nil {
+		return nil, err
+	}
+	section = cfg.Section("peer")
+	config.Peer = PeerConfig{}
+	err = section.MapTo(&config.Peer)
 	if err != nil {
 		return nil, err
 	}

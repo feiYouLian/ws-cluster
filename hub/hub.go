@@ -161,7 +161,7 @@ func newServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*Serv
 				OnMessage:    serverPeer.OnMessage,
 				OnDisconnect: serverPeer.OnDisconnect,
 			},
-			MessageQueueLen: 50,
+			MaxMessageSize: h.config.Peer.MaxMessageSize,
 		})
 
 	serverPeer.Peer = peer
@@ -181,7 +181,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
 		},
-		MessageQueueLen: h.config.Message.QueueLen,
+		MaxMessageSize: h.config.Peer.MaxMessageSize,
 	})
 
 	clientPeer.Peer = peer
