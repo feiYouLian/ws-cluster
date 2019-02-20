@@ -248,7 +248,7 @@ func (p *Peer) SendMessage(message wire.Message, doneChan chan<- struct{}) error
 
 // PushMessage 把消息写到队列中，等待处理
 func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
-	if p.connected == 0 {
+	if !p.IsConnected() {
 		if doneChan != nil {
 			go func() {
 				doneChan <- struct{}{}
@@ -262,7 +262,7 @@ func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
 
 // Close close conn
 func (p *Peer) Close() {
-	if p.connected == 0 {
+	if !p.IsConnected() {
 		return
 	}
 	p.quit <- struct{}{}
@@ -274,4 +274,9 @@ func (p *Peer) disconnect() {
 		return
 	}
 	p.conn.Close()
+}
+
+// IsConnected 判断连接是否正常
+func (p *Peer) IsConnected() bool {
+	return atomic.LoadInt32(&p.connected) == 1
 }

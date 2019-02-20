@@ -36,7 +36,7 @@ func (c *RedisClientCache) AddClient(client *Client) error {
 		return err
 	}
 	skey := fmt.Sprintf(serverClientReidsPattern, client.ServerID)
-	c.client.HSet(skey, ckey, time.Now().Unix())
+	c.client.HSet(skey, client.ID, "1")
 	return err
 }
 
@@ -48,15 +48,20 @@ func (c *RedisClientCache) DelClient(ID string, ServerID uint64) (int, error) {
 		return 0, err
 	}
 	skey := fmt.Sprintf(serverClientReidsPattern, ServerID)
-	ckey := fmt.Sprintf(clientReidsPattern, ID)
-	c.client.HDel(skey, ckey)
+	c.client.HDel(skey, ID)
 	return int(aff), nil
 }
 
 // DelAll DelAll
 func (c *RedisClientCache) DelAll(ServerID uint64) error {
 	skey := fmt.Sprintf(serverClientReidsPattern, ServerID)
-	c.client.Del(skey)
+	res, err := c.client.HGetAll(skey).Result()
+	if err != nil {
+		return err
+	}
+	for ID := range res {
+		c.client.Del(fmt.Sprintf(clientReidsPattern, ID))
+	}
 	return nil
 }
 
@@ -74,6 +79,22 @@ func (c *RedisClientCache) GetClient(ID string) (*Client, error) {
 		return nil, err
 	}
 	return client, nil
+}
+
+// GetClients GetClients
+func (c *RedisClientCache) GetClients(ServerID uint64) ([]string, error) {
+	skey := fmt.Sprintf(serverClientReidsPattern, ServerID)
+	res, err := c.client.HGetAll(skey).Result()
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(res))
+	i := 0
+	for key := range res {
+		ids[i] = key
+		i++
+	}
+	return ids, nil
 }
 
 // RedisServerCache RedisServerCache

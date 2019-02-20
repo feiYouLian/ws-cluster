@@ -24,16 +24,23 @@ import (
 )
 
 const (
-	clientFlag = byte(0)
-	serverFlag = byte(1)
+	clientFlag     = byte(0)
+	serverFlag     = byte(1)
+	reconnectTimes = 180
+)
+
+const (
+	peerTypeClient = 1
+	peerTypeServer = 2
 )
 
 // ServerPeer 代表一个服务器节点，每个服务器节点都会建立与其它服务器节点的接连，
 // 这个对象用于处理跨服务节点消息收发。
 type ServerPeer struct {
 	*peer.Peer
-	hub    *Hub
-	entity *database.Server
+	hub         *Hub
+	entity      *database.Server
+	isOutServer bool
 }
 
 // OnMessage 接收消息
@@ -50,24 +57,39 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	p.hub.unregistServer <- p
+	done := make(chan struct{})
+	p.hub.unregister <- &delPeer{peer: p, done: done}
+	<-done
 
-	// 判断当前节点是否为主节点
-	servers, err := p.hub.serverCache.GetServers()
-	if err != nil {
-		return err
-	}
-	isMaster := true
-	for _, s := range servers {
-		if s.ID < p.hub.ServerID { // 最小的 id 就是存活最久的服务，就是主服务
-			isMaster = false
+	// 如果是出去的服务，就尝试重连
+	if p.isOutServer {
+		for i := 0; i < reconnectTimes; i++ {
+			time.Sleep(time.Second * 1)
+			if err := p.connect(); err == nil {
+				break
+			}
 		}
 	}
-	// 如果是主节点，维护服务器列表
-	if isMaster {
-		p.hub.serverCache.DelServer(p.entity.ID)
-		p.hub.clientCache.DelAll(p.entity.ID)
+
+	return nil
+}
+
+func (p *ServerPeer) connect() error {
+	header := http.Header{}
+	header.Add("id", fmt.Sprint(p.hub.ServerSelf.ID))
+	header.Add("ip", p.hub.ServerSelf.IP)
+	header.Add("port", strconv.Itoa(p.hub.ServerSelf.Port))
+
+	server := p.entity
+	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
+	log.Printf("connecting to %s", u.String())
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	if err != nil {
+		log.Println("dial:", u.String(), err)
+		return err
 	}
+	p.SetConnection(conn)
 	return nil
 }
 
@@ -145,14 +167,17 @@ func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	p.hub.unregistClient <- p
+	p.hub.unregister <- &delPeer{peer: p, done: nil}
 	return nil
 }
 
-func newServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
+// newServerPeer 主动去连接另一台服务节点器
+func newServerPeer(h *Hub, server *database.Server) (*ServerPeer, error) {
+
 	serverPeer := &ServerPeer{
-		hub:    h,
-		entity: server,
+		hub:         h,
+		entity:      server,
+		isOutServer: true,
 	}
 
 	peer := peer.NewPeer(fmt.Sprintf("S%v", server.ID),
@@ -165,6 +190,32 @@ func newServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*Serv
 		})
 
 	serverPeer.Peer = peer
+	// 主动进行连接
+	serverPeer.connect()
+
+	return serverPeer, nil
+}
+
+// bindServerPeer 处理其它服务器节点过来的连接
+func bindServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
+
+	serverPeer := &ServerPeer{
+		hub:         h,
+		entity:      server,
+		isOutServer: false,
+	}
+
+	peer := peer.NewPeer(fmt.Sprintf("S%v", server.ID),
+		&peer.Config{
+			Listeners: &peer.MessageListeners{
+				OnMessage:    serverPeer.OnMessage,
+				OnDisconnect: serverPeer.OnDisconnect,
+			},
+			MaxMessageSize: h.config.Peer.MaxMessageSize,
+		})
+
+	serverPeer.Peer = peer
+	// 被动接受的连接
 	serverPeer.SetConnection(conn)
 
 	return serverPeer, nil
@@ -201,11 +252,22 @@ type saveMessage struct {
 	done chan bool //
 }
 
+type addPeer struct {
+	peer interface{}
+	done chan struct{}
+}
+
+type delPeer struct {
+	peer interface{}
+	done chan struct{}
+}
+
 // Hub 是一个服务中心，所有 clientPeer
 type Hub struct {
 	upgrader    *websocket.Upgrader
 	config      *config.Config
 	ServerID    uint64
+	ServerSelf  *database.Server
 	clientCache database.ClientCache
 	groupCache  database.GroupCache
 	serverCache database.ServerCache
@@ -215,10 +277,8 @@ type Hub struct {
 	clientPeers map[string]*ClientPeer
 	serverPeers map[uint64]*ServerPeer
 
-	registClient   chan *ClientPeer
-	unregistClient chan *ClientPeer
-	registServer   chan *ServerPeer
-	unregistServer chan *ServerPeer
+	register   chan *addPeer
+	unregister chan *delPeer
 
 	sendMessage chan sendMessage
 	saveMessage chan saveMessage
@@ -251,23 +311,24 @@ func NewHub(config *config.Config) (*Hub, error) {
 	mysqldb := database.InitDb(config.Mysql.IP, config.Mysql.Port, config.Mysql.User, config.Mysql.Password, config.Mysql.DbName)
 
 	hub := &Hub{
-		upgrader:       upgrader,
-		config:         config,
-		ServerID:       config.Server.ID,
-		clientCache:    database.NewRedisClientCache(redis),
-		serverCache:    database.NewRedisServerCache(redis),
-		groupCache:     database.NewMemGroupCache(),
-		messageStore:   database.NewMysqlMessageStore(mysqldb),
-		clientPeers:    make(map[string]*ClientPeer, 100),
-		serverPeers:    make(map[uint64]*ServerPeer, 100),
-		registClient:   make(chan *ClientPeer, 1),
-		unregistClient: make(chan *ClientPeer, 1),
-		registServer:   make(chan *ServerPeer, 1),
-		unregistServer: make(chan *ServerPeer, 1),
-		sendMessage:    make(chan sendMessage, 1),
-		saveMessage:    make(chan saveMessage, 1),
-		quit:           make(chan struct{}),
+		upgrader:     upgrader,
+		config:       config,
+		ServerID:     config.Server.ID,
+		clientCache:  database.NewRedisClientCache(redis),
+		serverCache:  database.NewRedisServerCache(redis),
+		groupCache:   database.NewMemGroupCache(),
+		messageStore: database.NewMysqlMessageStore(mysqldb),
+		clientPeers:  make(map[string]*ClientPeer, 100),
+		serverPeers:  make(map[uint64]*ServerPeer, 100),
+		register:     make(chan *addPeer, 1),
+		unregister:   make(chan *delPeer, 1),
+		sendMessage:  make(chan sendMessage, 1),
+		saveMessage:  make(chan saveMessage, 1),
+		quit:         make(chan struct{}),
 	}
+
+	// clean all of old clients due to crash
+	hub.clientCache.DelAll(config.Server.ID)
 
 	// regist a service for client
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
@@ -320,6 +381,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	clientPeer, err := newClientPeer(hub, conn, &database.Client{
 		ID:       clientID,
 		ServerID: hub.ServerID,
+		LoginAt:  uint32(time.Now().Unix()),
 	})
 
 	if err != nil {
@@ -327,7 +389,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hub.registClient <- clientPeer
+	hub.register <- &addPeer{peer: clientPeer, done: nil}
 	log.Printf("client in ,%v, clientid: %v", r.RemoteAddr, clientID)
 }
 
@@ -342,7 +404,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	serverPeer, err := newServerPeer(hub, conn, &database.Server{
+	serverPeer, err := bindServerPeer(hub, conn, &database.Server{
 		ID:   ID,
 		IP:   IP,
 		Port: Port,
@@ -352,7 +414,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hub.registServer <- serverPeer
+	hub.register <- &addPeer{peer: serverPeer, done: nil}
 }
 
 // Run start all handlers
@@ -377,31 +439,19 @@ func (h *Hub) handleOutbind() error {
 		IP:   wire.GetOutboundIP().String(),
 		Port: h.config.Server.Listen,
 	}
+	h.ServerSelf = &serverSelf
 
 	// 主动连接到其它节点
 	for _, server := range servers {
 		if server.ID == serverSelf.ID {
 			continue
 		}
-		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
-		log.Printf("connecting to %s", u.String())
-
-		header := http.Header{}
-		header.Add("id", fmt.Sprint(serverSelf.ID))
-		header.Add("ip", serverSelf.IP)
-		header.Add("port", strconv.Itoa(serverSelf.Port))
-
-		conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
-		if err != nil {
-			log.Println("dial:", err)
-			continue
-		}
-		serverPeer, err := newServerPeer(h, conn, &server)
+		serverPeer, err := newServerPeer(h, &server)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		h.registServer <- serverPeer
+		h.register <- &addPeer{peer: serverPeer, done: nil}
 	}
 
 	// 记录到远程缓存中
@@ -413,37 +463,62 @@ func (h *Hub) handleOutbind() error {
 func (h *Hub) handlePeer() {
 	for {
 		select {
-		case peer := <-h.registClient:
-			if p, ok := h.clientPeers[peer.entity.ID]; ok {
-				// 如果节点已经登陆，就把前一个 peer踢下线
-				p.Close()
-			} else {
-				client, err := h.clientCache.GetClient(peer.entity.ID)
-				// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
-				if err == nil && client != nil {
+		case p := <-h.register:
+			switch p.peer.(type) {
+			case *ClientPeer:
+				peer := p.peer.(*ClientPeer)
+				if p, ok := h.clientPeers[peer.entity.ID]; ok {
+					// 如果节点已经登陆，就把前一个 peer踢下线
+					p.Close()
+				} else {
+					client, err := h.clientCache.GetClient(peer.entity.ID)
+					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
+					if err == nil && client != nil {
 
+					}
+				}
+				h.clientPeers[peer.entity.ID] = peer
+				h.clientCache.AddClient(peer.entity)
+			case *ServerPeer:
+				peer := p.peer.(*ServerPeer)
+				h.serverPeers[peer.entity.ID] = peer
+			}
+		case p := <-h.unregister:
+			switch p.peer.(type) {
+			case *ClientPeer:
+				peer := p.peer.(*ClientPeer)
+				if _, ok := h.clientPeers[peer.entity.ID]; ok {
+					delete(h.clientPeers, peer.entity.ID)
+					peer.Close()
+
+					h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
+				}
+
+			case *ServerPeer:
+				peer := p.peer.(*ServerPeer)
+				if _, ok := h.serverPeers[peer.entity.ID]; ok {
+					delete(h.serverPeers, peer.entity.ID)
+					peer.Close()
 				}
 			}
-			h.clientPeers[peer.entity.ID] = peer
-			h.clientCache.AddClient(peer.entity)
-		case peer := <-h.unregistClient:
-			if _, ok := h.clientPeers[peer.entity.ID]; ok {
-				delete(h.clientPeers, peer.entity.ID)
-				peer.Close()
-
-				h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
-			}
-		case peer := <-h.registServer:
-			h.serverPeers[peer.entity.ID] = peer
-		case peer := <-h.unregistServer:
-			if _, ok := h.serverPeers[peer.entity.ID]; ok {
-				delete(h.serverPeers, peer.entity.ID)
-				peer.Close()
-				// 不删除缓存。只有主服务才有权删除
-			}
+		case <-h.quit:
+			break
 		}
 	}
 }
+
+// func isMasterServer(servers []database.Server, ID, exID uint64) bool {
+// 	isMaster := true
+// 	for _, s := range servers {
+// 		if s.ID == exID {
+// 			continue
+// 		}
+// 		if s.ID < ID { // 最小的 id 就是存活最久的服务，就是主服务
+// 			isMaster = false
+// 		}
+// 	}
+// 	return isMaster
+// }
 
 // 处理消息转发
 func (h *Hub) handleMessage() {
@@ -498,6 +573,8 @@ func (h *Hub) handleMessage() {
 					}
 				}
 			}
+		case <-h.quit:
+			break
 		}
 	}
 }
@@ -519,5 +596,18 @@ func (h *Hub) handlesaveMessage() {
 
 // Close close hub
 func (h *Hub) Close() {
+	h.clean()
+
 	h.quit <- struct{}{}
+}
+
+// clean clean hub
+func (h *Hub) clean() {
+	for _, peer := range h.clientPeers {
+		peer.Close()
+		h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
+	}
+	log.Println("clean clients in cache")
+	h.serverCache.DelServer(h.ServerID)
+	log.Println("clean server in cache")
 }

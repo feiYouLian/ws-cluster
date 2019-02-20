@@ -13,8 +13,10 @@ import (
 )
 
 func handleInterrupt(hub *hub.Hub, sc chan os.Signal) {
-
-	hub.Close()
+	select {
+	case <-sc:
+		hub.Close()
+	}
 }
 
 func main() {
@@ -30,11 +32,11 @@ func main() {
 	if err != nil {
 		log.Panicln(err)
 	}
-	hub.Run()
-
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
 
 	go handleInterrupt(hub, sc)
+
+	hub.Run()
 }

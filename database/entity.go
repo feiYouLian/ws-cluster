@@ -8,10 +8,8 @@ import (
 // Client 是一个具体的客户端身份对象
 type Client struct {
 	ID       string
-	Name     string
 	ServerID uint64
-	// Extra 额外信息
-	Extra string
+	LoginAt  uint32 //second
 }
 
 // Group 代表一个群，发往这个群的消息会转发给所有在此群中的用户。

@@ -6,6 +6,8 @@ type ClientCache interface {
 	DelClient(ID string, ServerID uint64) (int, error)
 	DelAll(ServerID uint64) error
 	GetClient(ID string) (*Client, error)
+	// GetClients 返回服务器上所有的客户端 id 列表
+	GetClients(ServerID uint64) ([]string, error)
 }
 
 // ServerCache 定义了服务器列表操作方法
