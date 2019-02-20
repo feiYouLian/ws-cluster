@@ -57,6 +57,8 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
+	log.Println("server disconneted", p.entity.ID)
+
 	done := make(chan struct{})
 	p.hub.unregister <- &delPeer{peer: p, done: done}
 	<-done
@@ -308,6 +310,8 @@ func NewHub(config *config.Config) (*Hub, error) {
 
 	redis := database.InitRedis(config.Redis.IP, config.Redis.Port, config.Redis.Password)
 
+	redis.Del("SERVER_LIST", "SERVER_CLIENT_0")
+
 	mysqldb := database.InitDb(config.Mysql.IP, config.Mysql.Port, config.Mysql.User, config.Mysql.Password, config.Mysql.DbName)
 
 	hub := &Hub{
@@ -339,8 +343,12 @@ func NewHub(config *config.Config) (*Hub, error) {
 		handleServerWebSocket(hub, w, r)
 	})
 	go func() {
-		log.Println("listen on ", config.Server.Listen)
-		err := http.ListenAndServe(fmt.Sprintf(":%d", config.Server.Listen), nil)
+		listenIP := config.Server.Addr
+		if config.Server.Addr == "" {
+			listenIP = wire.GetOutboundIP().String()
+		}
+		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, config.Server.Listen))
+		err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, config.Server.Listen), nil)
 
 		if err != nil {
 			log.Println("ListenAndServe: ", err)
@@ -426,6 +434,7 @@ func (h *Hub) Run() {
 	go h.handlePeer()
 	go h.handleMessage()
 	go h.handlesaveMessage()
+
 	<-h.quit
 }
 
