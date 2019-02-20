@@ -439,9 +439,10 @@ func (h *Hub) handleOutbind() error {
 		return err
 	}
 	serverSelf := database.Server{
-		ID:   h.ServerID,
-		IP:   wire.GetOutboundIP().String(),
-		Port: h.config.Server.Listen,
+		ID:       h.ServerID,
+		IP:       wire.GetOutboundIP().String(),
+		Port:     h.config.Server.Listen,
+		BootTime: time.Now(),
 	}
 	h.ServerSelf = &serverSelf
 
