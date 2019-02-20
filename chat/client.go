@@ -114,7 +114,7 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func robot(clientID string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, clientID, "localhost:8080", true)
+	peer, err := newClientPeer(secret, clientID, "192.168.0.127:8180", true)
 	if err != nil {
 		log.Panicln(err)
 	}
