@@ -36,7 +36,7 @@ func (c *RedisClientCache) AddClient(client *Client) error {
 		return err
 	}
 	skey := fmt.Sprintf(serverClientReidsPattern, client.ServerID)
-	c.client.HSet(skey, client.ID, "1")
+	c.client.HSet(skey, client.ID, "")
 	return err
 }
 
@@ -44,11 +44,13 @@ func (c *RedisClientCache) AddClient(client *Client) error {
 func (c *RedisClientCache) DelClient(ID string, ServerID uint64) (int, error) {
 	cmd := c.client.Del(fmt.Sprintf(clientReidsPattern, ID))
 	aff, err := cmd.Result()
+
+	skey := fmt.Sprintf(serverClientReidsPattern, ServerID)
+	c.client.HDel(skey, ID)
+
 	if err != nil {
 		return 0, err
 	}
-	skey := fmt.Sprintf(serverClientReidsPattern, ServerID)
-	c.client.HDel(skey, ID)
 	return int(aff), nil
 }
 
