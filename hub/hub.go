@@ -57,7 +57,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	log.Println("server disconneted", p.entity.ID)
+	log.Println("server disconnected", p.entity.ID)
 
 	done := make(chan struct{})
 	p.hub.unregister <- &delPeer{peer: p, done: done}
@@ -169,6 +169,7 @@ func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
+	log.Println("client disconnected", p.entity.ID)
 	p.hub.unregister <- &delPeer{peer: p, done: nil}
 	return nil
 }
