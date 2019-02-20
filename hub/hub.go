@@ -310,8 +310,6 @@ func NewHub(config *config.Config) (*Hub, error) {
 
 	redis := database.InitRedis(config.Redis.IP, config.Redis.Port, config.Redis.Password)
 
-	redis.Del("SERVER_LIST", "SERVER_CLIENT_0")
-
 	mysqldb := database.InitDb(config.Mysql.IP, config.Mysql.Port, config.Mysql.User, config.Mysql.Password, config.Mysql.DbName)
 
 	hub := &Hub{

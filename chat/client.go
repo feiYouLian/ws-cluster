@@ -113,8 +113,8 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func robot(clientID string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, clientID, "192.168.0.127:8380", true)
+func robot(from, to string, quit chan os.Signal) {
+	peer, err := newClientPeer(secret, from, "192.168.0.127:8380", true)
 	if err != nil {
 		log.Println(err)
 		return
@@ -122,13 +122,13 @@ func robot(clientID string, quit chan os.Signal) {
 	ws := sync.WaitGroup{}
 	// 测试发送100条消息时间
 	t1 := time.Now().UnixNano()
-	for index := uint32(0); index < 10; index++ {
+	for index := uint32(0); index < 1; index++ {
 		ws.Add(1)
 		go func(i uint32) {
 			done := make(chan struct{})
-			msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: "1"})
+			msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
 			chatMsg := msg.(*wire.Msgchat)
-			chatMsg.From = clientID
+			chatMsg.From = from
 			chatMsg.Type = 1
 			chatMsg.Text = fmt.Sprint("hello, im robot", i)
 			peer.SendMessage(chatMsg, done)
@@ -140,17 +140,16 @@ func robot(clientID string, quit chan os.Signal) {
 	t2 := time.Now().UnixNano()
 	log.Println("cost time:", (t2-t1)/1000)
 
-	done := make(chan struct{})
+	// done := make(chan struct{})
+	// msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "notify"})
+	// chatMsg2 := msg2.(*wire.Msgchat)
+	// chatMsg2.From = from
+	// chatMsg2.Type = 1
+	// chatMsg2.Text = "hello, group message"
 
-	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "notify"})
-	chatMsg2 := msg2.(*wire.Msgchat)
-	chatMsg2.From = clientID
-	chatMsg2.Type = 1
-	chatMsg2.Text = "hello, group message"
+	// peer.SendMessage(chatMsg2, done)
+	// <-done
 
-	peer.SendMessage(chatMsg2, done)
-
-	<-done
 	<-quit
 	// peer.Peer.Close()
 
@@ -160,6 +159,7 @@ func main() {
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
-
-	robot("system", sc)
+	from := os.Args[1]
+	to := os.Args[2]
+	robot(from, to, sc)
 }
