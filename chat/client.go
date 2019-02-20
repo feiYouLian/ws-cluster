@@ -114,9 +114,10 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func robot(clientID string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, clientID, "192.168.0.188:8380", true)
+	peer, err := newClientPeer(secret, clientID, "192.168.0.127:8380", true)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	ws := sync.WaitGroup{}
 	// 测试发送100条消息时间
