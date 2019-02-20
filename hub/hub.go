@@ -344,9 +344,6 @@ func NewHub(config *config.Config) (*Hub, error) {
 	})
 	go func() {
 		listenIP := config.Server.Addr
-		if config.Server.Addr == "" {
-			listenIP = wire.GetOutboundIP().String()
-		}
 		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, config.Server.Listen))
 		err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, config.Server.Listen), nil)
 
