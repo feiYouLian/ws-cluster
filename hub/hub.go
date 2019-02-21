@@ -27,6 +27,7 @@ const (
 	clientFlag     = byte(0)
 	serverFlag     = byte(1)
 	reconnectTimes = 180
+	pingInterval   = time.Second * 3
 )
 
 const (
@@ -324,7 +325,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	} else {
 		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
 		clientCache = newHubClientCache(database.NewRedisClientCache(redis), true)
-		serverCache = database.NewRedisServerCache(redis)
+		serverCache = newHubServerCache(database.NewRedisServerCache(redis), pingInterval)
 	}
 
 	hub := &Hub{
@@ -682,10 +683,10 @@ func (c *ClientCache) GetClient(ID string) (*database.Client, error) {
 // ServerCache ServerCache
 type ServerCache struct {
 	cache        database.ServerCache
-	pingInterval int
+	pingInterval time.Duration
 }
 
-func newHubServerCache(cache database.ServerCache, pingInterval int) *ServerCache {
+func newHubServerCache(cache database.ServerCache, pingInterval time.Duration) *ServerCache {
 	return &ServerCache{cache: cache, pingInterval: pingInterval}
 }
 
@@ -713,7 +714,7 @@ func (c *ServerCache) GetServers() ([]database.Server, error) {
 	}
 	aliveServers := make([]database.Server, 0)
 	for _, server := range servers {
-		if int(time.Now().Unix()-server.Ping) > c.pingInterval*3 {
+		if time.Duration(time.Now().Unix()-server.Ping)*time.Second > c.pingInterval*3 {
 			c.cache.DelServer(server.ID)
 			continue
 		}
