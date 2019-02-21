@@ -1,0 +1,12 @@
+{
+    "databases": [
+        {
+            "name": "local",
+            "url": "redis://localhost:6379"
+        },
+        {
+            "name": "127",
+            "url": "redis://192.168.0.127:6379"
+        }
+    ]
+}

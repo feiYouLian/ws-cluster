@@ -297,17 +297,17 @@ type Hub struct {
 }
 
 // NewHub 创建一个 Server 对象，并初始化
-func NewHub(config *config.Config) (*Hub, error) {
+func NewHub(cfg *config.Config) (*Hub, error) {
 
 	var upgrader = &websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
-			if config.Server.Origin == "*" {
+			if cfg.Server.Origin == "*" {
 				return true
 			}
 			rOrigin := r.Header.Get("Origin")
-			if strings.Contains(config.Server.Origin, rOrigin) {
+			if strings.Contains(cfg.Server.Origin, rOrigin) {
 				return true
 			}
 			log.Println("refuse", rOrigin)
@@ -315,17 +315,22 @@ func NewHub(config *config.Config) (*Hub, error) {
 		},
 	}
 	// build a client instance of redis
+	mysqldb := database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
 
-	redis := database.InitRedis(config.Redis.IP, config.Redis.Port, config.Redis.Password)
-
-	mysqldb := database.InitDb(config.Mysql.IP, config.Mysql.Port, config.Mysql.User, config.Mysql.Password, config.Mysql.DbName)
+	var clientCache database.ClientCache
+	if cfg.Server.Mode == config.ModeCluster {
+		clientCache = newHubClientCache(nil, false)
+	} else {
+		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
+		clientCache = newHubClientCache(database.NewRedisClientCache(redis), true)
+	}
 
 	hub := &Hub{
 		upgrader:     upgrader,
-		config:       config,
-		ServerID:     config.Server.ID,
-		clientCache:  database.NewRedisClientCache(redis),
-		serverCache:  database.NewRedisServerCache(redis),
+		config:       cfg,
+		ServerID:     cfg.Server.ID,
+		clientCache:  clientCache,
+		serverCache:  nil,
 		groupCache:   database.NewMemGroupCache(),
 		messageStore: database.NewMysqlMessageStore(mysqldb),
 		clientPeers:  make(map[string]*ClientPeer, 100),
@@ -337,9 +342,6 @@ func NewHub(config *config.Config) (*Hub, error) {
 		quit:         make(chan struct{}),
 	}
 
-	// clean all of old clients due to crash
-	hub.clientCache.DelAll(config.Server.ID)
-
 	// regist a service for client
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
 		handleClientWebSocket(hub, w, r)
@@ -349,9 +351,9 @@ func NewHub(config *config.Config) (*Hub, error) {
 		handleServerWebSocket(hub, w, r)
 	})
 	go func() {
-		listenIP := config.Server.Addr
-		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, config.Server.Listen))
-		err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, config.Server.Listen), nil)
+		listenIP := cfg.Server.Addr
+		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen))
+		err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen), nil)
 
 		if err != nil {
 			log.Println("ListenAndServe: ", err)
@@ -443,6 +445,9 @@ func (h *Hub) Run() {
 
 // 与其它服务器节点建立长连接
 func (h *Hub) outPeerhandler() error {
+	if h.config.Server.Mode == config.ModeSingle {
+		return nil
+	}
 	log.Println("start outPeerhandler")
 	servers, err := h.serverCache.GetServers()
 	if err != nil {
@@ -463,22 +468,15 @@ func (h *Hub) outPeerhandler() error {
 		}
 		serverPeer, err := newServerPeer(h, &server)
 		if err != nil {
-			h.cleanServerCache(server.ID)
 			continue
 		}
 		h.register <- &addPeer{peer: serverPeer, done: nil}
 	}
 
 	// 记录到远程缓存中
-	h.serverCache.AddServer(&serverSelf)
+	h.serverCache.SetServer(&serverSelf)
 	log.Println("end outPeerhandler")
 	return nil
-}
-
-// 清理无效的服务缓存
-func (h *Hub) cleanServerCache(serverID uint64) {
-	h.serverCache.DelServer(serverID)
-	h.clientCache.DelAll(serverID)
 }
 
 func (h *Hub) peerHandler() {
@@ -513,7 +511,7 @@ func (h *Hub) peerHandler() {
 					delete(h.clientPeers, peer.entity.ID)
 					peer.Close()
 
-					h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
+					h.clientCache.DelClient(peer.entity.ID)
 				}
 
 			case *ServerPeer:
@@ -525,7 +523,6 @@ func (h *Hub) peerHandler() {
 			}
 		}
 	}
-	log.Println("stop peerHandler")
 }
 
 // func isMasterServer(servers []database.Server, ID, exID uint64) bool {
@@ -561,12 +558,7 @@ func (h *Hub) messageHandler() {
 
 				// 读取目标client所在的服务器
 				client, err := h.clientCache.GetClient(to)
-
-				// 如果读不到数据，就广播消息
-				if err != nil {
-					for _, serverpeer := range h.serverPeers {
-						serverpeer.PushMessage(msg.message, nil)
-					}
+				if err != nil || client == nil {
 					continue
 				}
 
@@ -597,8 +589,6 @@ func (h *Hub) messageHandler() {
 			}
 		}
 	}
-
-	log.Println("stop messageHandler")
 }
 
 func (h *Hub) saveMessageHandler() {
@@ -615,7 +605,6 @@ func (h *Hub) saveMessageHandler() {
 			}
 		}
 	}
-	log.Println("stop saveMessageHandler")
 }
 
 // Close close hub
@@ -629,9 +618,43 @@ func (h *Hub) Close() {
 func (h *Hub) clean() {
 	for _, peer := range h.clientPeers {
 		peer.Close()
-		h.clientCache.DelClient(peer.entity.ID, peer.entity.ServerID)
+		h.clientCache.DelClient(peer.entity.ID)
 	}
 	log.Println("clean clients in cache")
 	h.serverCache.DelServer(h.ServerID)
 	log.Println("clean server in cache")
+}
+
+// HubClientCache ClientCache wapper
+type HubClientCache struct {
+	cache     database.ClientCache
+	isCluster bool
+}
+
+func newHubClientCache(cache database.ClientCache, isCluster bool) *HubClientCache {
+	return &HubClientCache{cache: cache, isCluster: isCluster}
+}
+
+// AddClient AddClient
+func (c *HubClientCache) AddClient(client *database.Client) error {
+	if c.isCluster {
+		return c.cache.AddClient(client)
+	}
+	return nil
+}
+
+// DelClient DelClient
+func (c *HubClientCache) DelClient(ID string) (int, error) {
+	if c.isCluster {
+		return c.cache.DelClient(ID)
+	}
+	return 0, nil
+}
+
+// GetClient GetClient
+func (c *HubClientCache) GetClient(ID string) (*database.Client, error) {
+	if c.isCluster {
+		return c.cache.GetClient(ID)
+	}
+	return nil, nil
 }

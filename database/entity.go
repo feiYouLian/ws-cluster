@@ -27,6 +27,8 @@ type Server struct {
 	BootTime time.Time
 	IP       string
 	Port     int
+	// ClientNum 在线人数
+	ClientNum int
 }
 
 // ChatMsg 聊消息

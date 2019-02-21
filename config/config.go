@@ -22,6 +22,13 @@ var (
 	defaultIDConfigFile = filepath.Join(defaultDir, defaultIDName)
 )
 
+const (
+	// ModeSingle 单机启动模式
+	ModeSingle = 1
+	// ModeCluster 集群模式，此模式下，要求配置注册发现服务器zookeeper
+	ModeCluster = 2
+)
+
 // ServerConfig ServerConfig
 type ServerConfig struct {
 	ID     uint64 `description:"server id"`
@@ -29,6 +36,7 @@ type ServerConfig struct {
 	Listen int
 	Secret string
 	Origin string
+	Mode   uint8
 }
 
 // RedisConfig redis config
