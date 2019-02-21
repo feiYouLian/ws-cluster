@@ -86,9 +86,14 @@ func (p *ServerPeer) connect() error {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
 	log.Printf("connecting to %s", u.String())
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	dialar := &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 3 * time.Second,
+	}
+
+	conn, _, err := dialar.Dial(u.String(), header)
 	if err != nil {
-		log.Println("dial:", u.String(), err)
+		log.Println("dial:", err)
 		return err
 	}
 	p.SetConnection(conn)
@@ -194,7 +199,9 @@ func newServerPeer(h *Hub, server *database.Server) (*ServerPeer, error) {
 
 	serverPeer.Peer = peer
 	// 主动进行连接
-	serverPeer.connect()
+	if err := serverPeer.connect(); err != nil {
+		return nil, err
+	}
 
 	return serverPeer, nil
 }
@@ -424,17 +431,19 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 // Run start all handlers
 func (h *Hub) Run() {
 
-	// 连接到其它服务器节点
-	h.handleOutbind()
+	go h.peerHandler()
+	go h.messageHandler()
+	go h.saveMessageHandler()
 
-	go h.handlePeer()
-	go h.handleMessage()
-	go h.handlesaveMessage()
+	// 连接到其它服务器节点,并且对放开放服务
+	h.outPeerhandler()
 
 	<-h.quit
 }
 
-func (h *Hub) handleOutbind() error {
+// 与其它服务器节点建立长连接
+func (h *Hub) outPeerhandler() error {
+	log.Println("start outPeerhandler")
 	servers, err := h.serverCache.GetServers()
 	if err != nil {
 		return err
@@ -454,7 +463,7 @@ func (h *Hub) handleOutbind() error {
 		}
 		serverPeer, err := newServerPeer(h, &server)
 		if err != nil {
-			log.Println(err)
+			h.cleanServerCache(server.ID)
 			continue
 		}
 		h.register <- &addPeer{peer: serverPeer, done: nil}
@@ -462,11 +471,18 @@ func (h *Hub) handleOutbind() error {
 
 	// 记录到远程缓存中
 	h.serverCache.AddServer(&serverSelf)
-
+	log.Println("end outPeerhandler")
 	return nil
 }
 
-func (h *Hub) handlePeer() {
+// 清理无效的服务缓存
+func (h *Hub) cleanServerCache(serverID uint64) {
+	h.serverCache.DelServer(serverID)
+	h.clientCache.DelAll(serverID)
+}
+
+func (h *Hub) peerHandler() {
+	log.Println("start peerHandler")
 	for {
 		select {
 		case p := <-h.register:
@@ -507,10 +523,9 @@ func (h *Hub) handlePeer() {
 					peer.Close()
 				}
 			}
-		case <-h.quit:
-			break
 		}
 	}
+	log.Println("stop peerHandler")
 }
 
 // func isMasterServer(servers []database.Server, ID, exID uint64) bool {
@@ -527,7 +542,8 @@ func (h *Hub) handlePeer() {
 // }
 
 // 处理消息转发
-func (h *Hub) handleMessage() {
+func (h *Hub) messageHandler() {
+	log.Println("start messageHandler")
 	for {
 		select {
 		case msg := <-h.sendMessage:
@@ -579,13 +595,14 @@ func (h *Hub) handleMessage() {
 					}
 				}
 			}
-		case <-h.quit:
-			break
 		}
 	}
+
+	log.Println("stop messageHandler")
 }
 
-func (h *Hub) handlesaveMessage() {
+func (h *Hub) saveMessageHandler() {
+	log.Println("start saveMessageHandler")
 	for {
 		select {
 		case msg := <-h.saveMessage:
@@ -598,6 +615,7 @@ func (h *Hub) handlesaveMessage() {
 			}
 		}
 	}
+	log.Println("stop saveMessageHandler")
 }
 
 // Close close hub
