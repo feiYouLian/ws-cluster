@@ -320,7 +320,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 
 	var clientCache database.ClientCache
 	var serverCache database.ServerCache
-	if cfg.Server.Mode == config.ModeCluster {
+	if cfg.Server.Mode == config.ModeSingle {
 		clientCache = newHubClientCache(nil, false)
 	} else {
 		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
