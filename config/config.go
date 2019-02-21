@@ -36,7 +36,7 @@ type ServerConfig struct {
 	Listen int
 	Secret string
 	Origin string
-	Mode   uint8
+	Mode   int
 }
 
 // RedisConfig redis config

@@ -318,11 +318,13 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	mysqldb := database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
 
 	var clientCache database.ClientCache
+	var serverCache database.ServerCache
 	if cfg.Server.Mode == config.ModeCluster {
 		clientCache = newHubClientCache(nil, false)
 	} else {
 		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
 		clientCache = newHubClientCache(database.NewRedisClientCache(redis), true)
+		serverCache = database.NewRedisServerCache(redis)
 	}
 
 	hub := &Hub{
@@ -330,7 +332,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		config:       cfg,
 		ServerID:     cfg.Server.ID,
 		clientCache:  clientCache,
-		serverCache:  nil,
+		serverCache:  serverCache,
 		groupCache:   database.NewMemGroupCache(),
 		messageStore: database.NewMysqlMessageStore(mysqldb),
 		clientPeers:  make(map[string]*ClientPeer, 100),
@@ -436,15 +438,32 @@ func (h *Hub) Run() {
 	go h.peerHandler()
 	go h.messageHandler()
 	go h.saveMessageHandler()
+	go h.pingHandler()
 
 	// 连接到其它服务器节点,并且对放开放服务
-	h.outPeerhandler()
+	h.outPeerHandler()
 
 	<-h.quit
 }
 
+func (h *Hub) pingHandler() error {
+	if h.config.Server.Mode == config.ModeSingle {
+		return nil
+	}
+	ticker := time.NewTicker(time.Second * 3)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			server := h.ServerSelf
+			server.ClientNum = len(h.clientPeers)
+			h.serverCache.SetServer(server)
+		}
+	}
+}
+
 // 与其它服务器节点建立长连接
-func (h *Hub) outPeerhandler() error {
+func (h *Hub) outPeerHandler() error {
 	if h.config.Server.Mode == config.ModeSingle {
 		return nil
 	}
@@ -454,10 +473,11 @@ func (h *Hub) outPeerhandler() error {
 		return err
 	}
 	serverSelf := database.Server{
-		ID:       h.ServerID,
-		IP:       wire.GetOutboundIP().String(),
-		Port:     h.config.Server.Listen,
-		BootTime: time.Now(),
+		ID:        h.ServerID,
+		IP:        wire.GetOutboundIP().String(),
+		Port:      h.config.Server.Listen,
+		BootTime:  time.Now(),
+		ClientNum: 0,
 	}
 	h.ServerSelf = &serverSelf
 
@@ -625,18 +645,18 @@ func (h *Hub) clean() {
 	log.Println("clean server in cache")
 }
 
-// HubClientCache ClientCache wapper
-type HubClientCache struct {
+// ClientCache ClientCache wapper
+type ClientCache struct {
 	cache     database.ClientCache
 	isCluster bool
 }
 
-func newHubClientCache(cache database.ClientCache, isCluster bool) *HubClientCache {
-	return &HubClientCache{cache: cache, isCluster: isCluster}
+func newHubClientCache(cache database.ClientCache, isCluster bool) *ClientCache {
+	return &ClientCache{cache: cache, isCluster: isCluster}
 }
 
 // AddClient AddClient
-func (c *HubClientCache) AddClient(client *database.Client) error {
+func (c *ClientCache) AddClient(client *database.Client) error {
 	if c.isCluster {
 		return c.cache.AddClient(client)
 	}
@@ -644,7 +664,7 @@ func (c *HubClientCache) AddClient(client *database.Client) error {
 }
 
 // DelClient DelClient
-func (c *HubClientCache) DelClient(ID string) (int, error) {
+func (c *ClientCache) DelClient(ID string) (int, error) {
 	if c.isCluster {
 		return c.cache.DelClient(ID)
 	}
@@ -652,9 +672,52 @@ func (c *HubClientCache) DelClient(ID string) (int, error) {
 }
 
 // GetClient GetClient
-func (c *HubClientCache) GetClient(ID string) (*database.Client, error) {
+func (c *ClientCache) GetClient(ID string) (*database.Client, error) {
 	if c.isCluster {
 		return c.cache.GetClient(ID)
 	}
 	return nil, nil
+}
+
+// ServerCache ServerCache
+type ServerCache struct {
+	cache        database.ServerCache
+	pingInterval int
+}
+
+func newHubServerCache(cache database.ServerCache, pingInterval int) *ServerCache {
+	return &ServerCache{cache: cache, pingInterval: pingInterval}
+}
+
+// SetServer SetServer
+func (c *ServerCache) SetServer(server *database.Server) error {
+	server.Ping = time.Now().Unix()
+	return c.cache.SetServer(server)
+}
+
+// GetServer GetServer
+func (c *ServerCache) GetServer(ID uint64) (*database.Server, error) {
+	return c.cache.GetServer(ID)
+}
+
+// DelServer DelServer
+func (c *ServerCache) DelServer(ID uint64) error {
+	return c.cache.DelServer(ID)
+}
+
+// GetServers GetServers
+func (c *ServerCache) GetServers() ([]database.Server, error) {
+	servers, err := c.cache.GetServers()
+	if err != nil {
+		return nil, err
+	}
+	aliveServers := make([]database.Server, 0)
+	for _, server := range servers {
+		if int(time.Now().Unix()-server.Ping) > c.pingInterval*3 {
+			c.cache.DelServer(server.ID)
+			continue
+		}
+		aliveServers = append(aliveServers, server)
+	}
+	return servers, nil
 }

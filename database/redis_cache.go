@@ -11,6 +11,7 @@ import (
 
 const (
 	clientReidsPattern = "Client_%v"
+	serversRedis       = "Server_List"
 )
 
 // RedisClientCache redis ClientCache
@@ -73,26 +74,59 @@ func NewRedisServerCache(client *redis.Client) *RedisServerCache {
 
 // SetServer SetServer
 func (c *RedisServerCache) SetServer(server *Server) error {
-
+	ser, _ := json.Marshal(server)
+	cmd := c.client.HSet(serversRedis, fmt.Sprint(server.ID), ser)
+	_, err := cmd.Result()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // GetServer GetServer
 func (c *RedisServerCache) GetServer(ID uint64) (*Server, error) {
-
-	return nil, nil
+	cmd := c.client.HGet(serversRedis, fmt.Sprint(ID))
+	res, err := cmd.Result()
+	if err != nil {
+		return nil, err
+	}
+	server := &Server{}
+	err = json.Unmarshal([]byte(res), server)
+	if err != nil {
+		return nil, err
+	}
+	return server, nil
 }
 
 // DelServer DelServer
 func (c *RedisServerCache) DelServer(ID uint64) error {
-
+	cmd := c.client.HDel(serversRedis, fmt.Sprint(ID))
+	_, err := cmd.Result()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // GetServers GetServers
 func (c *RedisServerCache) GetServers() ([]Server, error) {
-
-	return nil, nil
+	cmd := c.client.HGetAll(serversRedis)
+	res, err := cmd.Result()
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]Server, len(res))
+	i := 0
+	for _, item := range res {
+		server := Server{}
+		err := json.Unmarshal([]byte(item), &server)
+		if err != nil {
+			continue
+		}
+		servers[i] = server
+		i++
+	}
+	return servers, nil
 }
 
 // InitRedis return a redis instance
