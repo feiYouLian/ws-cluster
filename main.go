@@ -36,6 +36,7 @@ func main() {
 	cfg.MessageStore = database.NewMysqlMessageStore(mysqldb)
 
 	var cache config.Cache
+	cache.Group = database.NewMemGroupCache()
 	if cfg.Server.Mode == config.ModeCluster {
 		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
 
@@ -52,8 +53,6 @@ func main() {
 		}
 		cache.Client = database.NewRedisClientCache(redis)
 		cache.Server = database.NewRedisServerCache(redis)
-		cache.Group = database.NewMemGroupCache()
-
 	}
 	cfg.Cache = cache
 

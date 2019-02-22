@@ -144,9 +144,11 @@ func (p *Peer) inMessageHandler() {
 		for i := 0; i < mlen; {
 			msg, err := wire.ReadBytes(buf)
 			if err != nil {
+				log.Println(err)
 				// no more message
 				break
 			}
+			log.Println(msg)
 			i = i + 4 + len(msg)
 			go func(message []byte) {
 				err = p.config.Listeners.OnMessage(msg)
