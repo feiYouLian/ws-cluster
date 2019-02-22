@@ -286,8 +286,9 @@ type Hub struct {
 	serverCache database.ServerCache
 
 	messageStore database.MessageStore
-
+	// clientPeers 缓存客户端节点数据
 	clientPeers map[string]*ClientPeer
+	// serverPeers 缓存服务端节点数据
 	serverPeers map[uint64]*ServerPeer
 
 	register   chan *addPeer
@@ -335,8 +336,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		serverCache:  serverCache,
 		groupCache:   cfg.Cache.Group,
 		messageStore: cfg.MessageStore,
-		clientPeers:  make(map[string]*ClientPeer, 100),
-		serverPeers:  make(map[uint64]*ServerPeer, 100),
+		clientPeers:  make(map[string]*ClientPeer, 1000),
+		serverPeers:  make(map[uint64]*ServerPeer, 10),
 		register:     make(chan *addPeer, 1),
 		unregister:   make(chan *delPeer, 1),
 		sendMessage:  make(chan sendMessage, 1),
@@ -403,7 +404,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-
+	// 注册节点到服务器
 	hub.register <- &addPeer{peer: clientPeer, done: nil}
 	log.Printf("client in ,%v, clientid: %v", r.RemoteAddr, clientID)
 }

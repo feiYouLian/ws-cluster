@@ -114,7 +114,7 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func robot(from, to string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, from, "192.168.0.188:8380", true)
+	peer, err := newClientPeer(secret, from, "192.168.0.127:8380", true)
 	if err != nil {
 		log.Println(err)
 		return
@@ -146,7 +146,7 @@ func robot(from, to string, quit chan os.Signal) {
 	chatMsg2 := msg2.(*wire.Msgchat)
 	chatMsg2.From = from
 	chatMsg2.Type = 1
-	chatMsg2.Text = "{'sport_id':1,'goalTime':323232434,'homeTeam':'A','vistingTeam':'B','score':'2:0','goalTeam':1}"
+	chatMsg2.Text = "{\"sport_id\":1,\"goalTime\":32,\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}"
 
 	peer.SendMessage(chatMsg2, done)
 	<-done
