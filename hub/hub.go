@@ -524,6 +524,9 @@ func (h *Hub) peerHandler() {
 				peer := p.peer.(*ServerPeer)
 				h.serverPeers[peer.entity.ID] = peer
 			}
+			if p.done != nil {
+				p.done <- struct{}{}
+			}
 		case p := <-h.unregister:
 			switch p.peer.(type) {
 			case *ClientPeer:
@@ -541,6 +544,9 @@ func (h *Hub) peerHandler() {
 					delete(h.serverPeers, peer.entity.ID)
 					peer.Close()
 				}
+			}
+			if p.done != nil {
+				p.done <- struct{}{}
 			}
 		}
 	}
