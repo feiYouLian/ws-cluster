@@ -78,10 +78,19 @@ func (p *ServerPeer) OnDisconnect() error {
 }
 
 func (p *ServerPeer) connect() error {
+	serverSelf := p.hub.ServerSelf
+
+	// 生成加密摘要
+	h := md5.New()
+	io.WriteString(h, fmt.Sprintf("%v%v%v", serverSelf.ID, serverSelf.IP, serverSelf.Port))
+	io.WriteString(h, p.hub.config.Server.Secret)
+	digest := hex.EncodeToString(h.Sum(nil))
+
 	header := http.Header{}
-	header.Add("id", fmt.Sprint(p.hub.ServerSelf.ID))
-	header.Add("ip", p.hub.ServerSelf.IP)
-	header.Add("port", strconv.Itoa(p.hub.ServerSelf.Port))
+	header.Add("id", fmt.Sprint(serverSelf.ID))
+	header.Add("ip", serverSelf.IP)
+	header.Add("port", strconv.Itoa(serverSelf.Port))
+	header.Add("digest", digest)
 
 	server := p.entity
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
@@ -379,11 +388,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	h := md5.New()
-	io.WriteString(h, clientID)
-	io.WriteString(h, nonce)
-	io.WriteString(h, hub.config.Server.Secret)
-	if digest != hex.EncodeToString(h.Sum(nil)) {
+	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v", clientID, nonce), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -414,6 +419,18 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	ID, _ := strconv.ParseUint(r.Header.Get("id"), 0, 64)
 	IP := r.Header.Get("ip")
 	Port, _ := strconv.Atoi(r.Header.Get("port"))
+	digest := r.Header.Get("digest")
+
+	if ID == 0 || IP == "" || Port == 0 {
+		// 错误处理，断开
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	// 校验digest及数据完整性
+	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", ID, IP, Port), digest) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	conn, err := hub.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -431,6 +448,13 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
+}
+
+func checkDigest(secret, text, digest string) bool {
+	h := md5.New()
+	io.WriteString(h, text)
+	io.WriteString(h, secret)
+	return digest == hex.EncodeToString(h.Sum(nil))
 }
 
 // Run start all handlers
