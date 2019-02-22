@@ -114,41 +114,42 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func robot(from, to string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, from, "192.168.0.188:8380", true)
+	peer, err := newClientPeer(secret, from, "192.168.0.127:8380", true)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	ws := sync.WaitGroup{}
-	// 测试发送100条消息时间
-	t1 := time.Now().UnixNano()
-	for index := uint32(0); index < 1; index++ {
-		ws.Add(1)
-		go func(i uint32) {
-			done := make(chan struct{})
-			msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
-			chatMsg := msg.(*wire.Msgchat)
-			chatMsg.From = from
-			chatMsg.Type = 1
-			chatMsg.Text = fmt.Sprint("hello, im robot", i)
-			peer.SendMessage(chatMsg, done)
-			<-done
-			ws.Done()
-		}(index)
+	if to != "" {
+		ws := sync.WaitGroup{}
+		// 测试发送100条消息时间
+		t1 := time.Now().UnixNano()
+		for index := uint32(0); index < 1; index++ {
+			ws.Add(1)
+			go func(i uint32) {
+				done := make(chan struct{})
+				msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
+				chatMsg := msg.(*wire.Msgchat)
+				chatMsg.From = from
+				chatMsg.Type = 1
+				chatMsg.Text = fmt.Sprint("hello, im robot", i)
+				peer.SendMessage(chatMsg, done)
+				<-done
+				ws.Done()
+			}(index)
+		}
+		ws.Wait()
+		t2 := time.Now().UnixNano()
+		log.Println("cost time:", (t2-t1)/1000)
 	}
-	ws.Wait()
-	t2 := time.Now().UnixNano()
-	log.Println("cost time:", (t2-t1)/1000)
+	done := make(chan struct{})
+	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "fb_score_notify"})
+	chatMsg2 := msg2.(*wire.Msgchat)
+	chatMsg2.From = from
+	chatMsg2.Type = 1
+	chatMsg2.Text = "{'sport_id':1,'goalTime':323232434,'homeTeam':'A','vistingTeam':'B','score':'2:0','goalTeam':1}"
 
-	// done := make(chan struct{})
-	// msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "notify"})
-	// chatMsg2 := msg2.(*wire.Msgchat)
-	// chatMsg2.From = from
-	// chatMsg2.Type = 1
-	// chatMsg2.Text = "hello, group message"
-
-	// peer.SendMessage(chatMsg2, done)
-	// <-done
+	peer.SendMessage(chatMsg2, done)
+	<-done
 
 	<-quit
 	// peer.Peer.Close()
@@ -159,7 +160,13 @@ func main() {
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
-	from := os.Args[1]
-	to := os.Args[2]
+	var from, to string
+	if len(os.Args) >= 2 {
+		from = os.Args[1]
+	}
+	if len(os.Args) >= 3 {
+		to = os.Args[2]
+	}
+
 	robot(from, to, sc)
 }

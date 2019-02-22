@@ -63,6 +63,7 @@ type Peer struct {
 	sendQueue     chan outMessage
 	sendDone      chan struct{}
 	quit          chan struct{}
+	queueQuit     chan struct{}
 	timeConnected time.Time
 
 	connected int32
@@ -93,6 +94,7 @@ func NewPeer(id string, config *Config) *Peer {
 		sendQueue: make(chan outMessage, 1),
 		sendDone:  make(chan struct{}, 1),
 		quit:      make(chan struct{}),
+		queueQuit: make(chan struct{}),
 	}
 }
 
@@ -174,7 +176,7 @@ func (p *Peer) outQueueHandler() {
 		// we are always waiting now.
 		return true
 	}
-
+Loop:
 	for {
 		select {
 		case msg, _ := <-p.outQueue:
@@ -191,10 +193,15 @@ func (p *Peer) outQueueHandler() {
 			val := pendingMsgs.Remove(next)
 			p.sendQueue <- val.(outMessage)
 		case <-p.quit:
-			break
+			break Loop
 		}
 	}
+	p.queueQuit <- struct{}{}
 
+	// clean
+	for next := pendingMsgs.Front(); next != nil; {
+		pendingMsgs.Remove(next)
+	}
 }
 
 func (p *Peer) outMessageHandler() {
@@ -203,6 +210,7 @@ func (p *Peer) outMessageHandler() {
 		p.disconnect()
 		ticker.Stop()
 	}()
+Loop:
 	for {
 		select {
 		case outMessage := <-p.sendQueue:
@@ -227,10 +235,10 @@ func (p *Peer) outMessageHandler() {
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				break
 			}
-		case <-p.quit:
+		case <-p.queueQuit:
 			// The hub closed the channel.
 			p.conn.WriteMessage(websocket.CloseMessage, nil)
-			break
+			break Loop
 		}
 	}
 }

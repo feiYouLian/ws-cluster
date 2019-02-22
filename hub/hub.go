@@ -299,7 +299,6 @@ type Hub struct {
 
 // NewHub 创建一个 Server 对象，并初始化
 func NewHub(cfg *config.Config) (*Hub, error) {
-
 	var upgrader = &websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -315,17 +314,15 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 			return false
 		},
 	}
-	// build a client instance of redis
-	mysqldb := database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
 
 	var clientCache database.ClientCache
 	var serverCache database.ServerCache
+
 	if cfg.Server.Mode == config.ModeSingle {
-		clientCache = newHubClientCache(nil, false)
+		clientCache = newHubClientCache(cfg.Cache.Client, false)
 	} else {
-		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
-		clientCache = newHubClientCache(database.NewRedisClientCache(redis), true)
-		serverCache = newHubServerCache(database.NewRedisServerCache(redis), pingInterval)
+		clientCache = newHubClientCache(cfg.Cache.Client, true)
+		serverCache = newHubServerCache(cfg.Cache.Server, pingInterval)
 	}
 
 	hub := &Hub{
@@ -334,8 +331,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		ServerID:     cfg.Server.ID,
 		clientCache:  clientCache,
 		serverCache:  serverCache,
-		groupCache:   database.NewMemGroupCache(),
-		messageStore: database.NewMysqlMessageStore(mysqldb),
+		groupCache:   cfg.Cache.Group,
+		messageStore: cfg.MessageStore,
 		clientPeers:  make(map[string]*ClientPeer, 100),
 		serverPeers:  make(map[uint64]*ServerPeer, 100),
 		register:     make(chan *addPeer, 1),

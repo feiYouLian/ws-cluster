@@ -21,3 +21,4 @@ type GroupCache interface {
 	Leave(group string, clientID string) error
 	GetGroupMembers(group string) ([]string, error)
 }
+

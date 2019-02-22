@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ws-cluster/database"
+
 	"github.com/go-ini/ini"
 )
 
@@ -58,14 +60,26 @@ type MysqlConfig struct {
 // PeerConfig PeerConfig
 type PeerConfig struct {
 	MaxMessageSize int
+	WriteWait      int
+	PongWait       int
+	PingPeriod     int
 }
 
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
 type Config struct {
-	Server ServerConfig
-	Redis  RedisConfig
-	Mysql  MysqlConfig
-	Peer   PeerConfig
+	Server       ServerConfig
+	Redis        RedisConfig
+	Mysql        MysqlConfig
+	Peer         PeerConfig
+	Cache        Cache
+	MessageStore database.MessageStore
+}
+
+// Cache 缓存服务配置
+type Cache struct {
+	Client database.ClientCache
+	Server database.ServerCache
+	Group  database.GroupCache
 }
 
 // LoadConfig LoadConfig
@@ -102,18 +116,19 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return &config, nil
+}
 
+func buildServerID() (uint64, error) {
 	// deal server id
-	_, err = os.Stat(defaultIDConfigFile)
+	_, err := os.Stat(defaultIDConfigFile)
 	if err != nil {
 		sid := fmt.Sprintf("%d", time.Now().UnixNano())
 		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), 0644)
 	}
 	fb, err := ioutil.ReadFile(defaultIDConfigFile)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	config.Server.ID, _ = strconv.ParseUint(string(fb), 0, 64)
-
-	return &config, nil
+	return strconv.ParseUint(string(fb), 0, 64)
 }
