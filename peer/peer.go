@@ -148,7 +148,6 @@ func (p *Peer) inMessageHandler() {
 				// no more message
 				break
 			}
-			log.Println(msg)
 			i = i + 4 + len(msg)
 			go func(message []byte) {
 				err = p.config.Listeners.OnMessage(msg)
@@ -157,7 +156,6 @@ func (p *Peer) inMessageHandler() {
 				}
 			}(msg)
 		}
-
 	}
 }
 

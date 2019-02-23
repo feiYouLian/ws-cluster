@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"time"
 
@@ -68,14 +69,16 @@ type ClientPeer struct {
 	clientID   string
 	serverAddr string
 	secret     string
+	message    chan []byte
 }
 
-func newClientPeer(secret, clientID, addr string, autoConn bool) (*ClientPeer, error) {
+func newClientPeer(secret, clientID, addr string, autoConn bool, msg chan []byte) (*ClientPeer, error) {
 	clientPeer := &ClientPeer{
 		AutoConn:   autoConn,
 		clientID:   clientID,
 		serverAddr: addr,
 		secret:     secret,
+		message:    msg,
 	}
 	if err := clientPeer.newPeer(); err != nil {
 		return nil, err
@@ -86,7 +89,7 @@ func newClientPeer(secret, clientID, addr string, autoConn bool) (*ClientPeer, e
 
 // OnMessage OnMessage
 func (p *ClientPeer) OnMessage(message []byte) error {
-	log.Println("OnMessage", message)
+	p.message <- message
 	return nil
 }
 
@@ -113,61 +116,86 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func robot(from, to string) {
-	peer, err := newClientPeer(secret, from, "192.168.1.12:8380", true)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if to != "" {
-		ws := sync.WaitGroup{}
-		// 测试发送100条消息时间
-		t1 := time.Now().UnixNano()
-		for index := uint32(0); index < 1; index++ {
-			ws.Add(1)
-			go func(i uint32) {
-				done := make(chan struct{})
-				msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: i, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
-				chatMsg := msg.(*wire.Msgchat)
-				chatMsg.From = from
-				chatMsg.Type = 1
-				chatMsg.Text = fmt.Sprint("hello", i)
-				peer.SendMessage(chatMsg, done)
-				<-done
-				ws.Done()
-			}(index)
-		}
-		ws.Wait()
-		t2 := time.Now().UnixNano()
-		log.Println("cost time:", (t2-t1)/1000)
-	}
+func sendtoclient(peer *ClientPeer, to string) {
 	done := make(chan struct{})
-	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "fb_score_notify"})
-	chatMsg2 := msg2.(*wire.Msgchat)
-	chatMsg2.From = from
-	chatMsg2.Type = 1
-	chatMsg2.Text = "{\"sport_id\":1,\"goalTime\":32,\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}"
-
-	peer.SendMessage(chatMsg2, done)
+	msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: uint32(time.Now().Unix()), Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
+	chatMsg := msg.(*wire.Msgchat)
+	chatMsg.From = peer.clientID
+	chatMsg.Type = 1
+	chatMsg.Text = fmt.Sprint("hello")
+	peer.SendMessage(chatMsg, done)
 	<-done
-
-	// peer.Peer.Close()
-
 }
+
+// done := make(chan struct{})
+// 	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "fb_score_notify"})
+// 	chatMsg2 := msg2.(*wire.Msgchat)
+// 	chatMsg2.From = from
+// 	chatMsg2.Type = 1
+// 	chatMsg2.Text = "{\"sport_id\":1,\"goalTime\":32,\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}"
+
+// 	peer.SendMessage(chatMsg2, done)
+// 	<-done
+
+const wshost = "192.168.1.12:8380"
 
 func main() {
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
-	var from, to string
+	var peerNum = 1
 	if len(os.Args) >= 2 {
-		from = os.Args[1]
+		peerNum, _ = strconv.Atoi(os.Args[1])
 	}
-	if len(os.Args) >= 3 {
-		to = os.Args[2]
-	}
+	// peers := make(map[string]*ClientPeer, peerNum)
+	addpeer := make(chan *ClientPeer, 100)
+	msgchan := make(chan []byte, 100)
+	intervalMsgNum := 0
+	totalMsgNum := 0
+	totalPeerNum := 0
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	go func() {
+		for {
+			select {
+			case <-addpeer:
+				totalPeerNum++
+			case <-msgchan:
+				intervalMsgNum++
+				totalMsgNum++
+			case <-ticker.C:
+				log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,总节点数：%v", intervalMsgNum, totalMsgNum, totalPeerNum)
+				intervalMsgNum = 0
+			}
+		}
+	}()
 
-	robot(from, to)
+	ws := sync.WaitGroup{}
+	t1 := time.Now()
+	for index := 0; index < peerNum; index++ {
+		ws.Add(1)
+		go func(i int) {
+			peer, err := newClientPeer(secret, fmt.Sprintf("client_%v", i), wshost, false, msgchan)
+			if err != nil {
+				log.Println(err)
+			} else {
+				addpeer <- peer
+			}
+			ws.Done()
+		}(index)
+
+		// peer, err := newClientPeer(secret, fmt.Sprintf("client_%v", index), wshost, false, msgchan)
+		// if err != nil {
+		// 	log.Println(err)
+		// 	time.Sleep(time.Millisecond * 300)
+		// } else {
+		// 	addpeer <- peer
+		// }
+	}
+	ws.Wait()
+
+	t2 := time.Now()
+	log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
 
 	<-sc
 }

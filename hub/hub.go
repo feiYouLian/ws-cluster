@@ -672,8 +672,10 @@ func (h *Hub) clean() {
 		h.clientCache.DelClient(peer.entity.ID)
 	}
 	log.Println("clean clients in cache")
-	h.serverCache.DelServer(h.ServerID)
-	log.Println("clean server in cache")
+	if h.config.Server.Mode == config.ModeCluster {
+		h.serverCache.DelServer(h.ServerID)
+		log.Println("clean server in cache")
+	}
 }
 
 // ClientCache ClientCache wapper
