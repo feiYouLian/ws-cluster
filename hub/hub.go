@@ -26,7 +26,7 @@ import (
 const (
 	clientFlag     = byte(0)
 	serverFlag     = byte(1)
-	reconnectTimes = 180
+	reconnectTimes = 60
 	pingInterval   = time.Second * 3
 )
 

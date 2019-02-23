@@ -130,7 +130,7 @@ func (c *RedisServerCache) GetServers() ([]Server, error) {
 }
 
 // InitRedis return a redis instance
-func InitRedis(ip string, port int, pass string) *redis.Client {
+func InitRedis(ip string, port int, pass string) (*redis.Client, error) {
 	redisdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", ip, port),
 		Password: pass,
@@ -138,6 +138,7 @@ func InitRedis(ip string, port int, pass string) *redis.Client {
 	_, err := redisdb.Ping().Result()
 	if err != nil {
 		log.Println(err)
+		return nil, err
 	}
-	return redisdb
+	return redisdb, nil
 }

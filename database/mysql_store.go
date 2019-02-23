@@ -16,6 +16,9 @@ type MysqMessageStore struct {
 
 // NewMysqlMessageStore new a MysqMessageStore
 func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
+	if engine == nil {
+		return &MysqMessageStore{}
+	}
 	err := engine.Sync2(new(ChatMsg))
 	if err != nil {
 		log.Println(err)

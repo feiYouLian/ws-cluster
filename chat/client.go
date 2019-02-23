@@ -113,8 +113,8 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func robot(from, to string, quit chan os.Signal) {
-	peer, err := newClientPeer(secret, from, "192.168.0.127:8380", true)
+func robot(from, to string) {
+	peer, err := newClientPeer(secret, from, "localhost:8380", true)
 	if err != nil {
 		log.Println(err)
 		return
@@ -131,7 +131,7 @@ func robot(from, to string, quit chan os.Signal) {
 				chatMsg := msg.(*wire.Msgchat)
 				chatMsg.From = from
 				chatMsg.Type = 1
-				chatMsg.Text = fmt.Sprint("hello, im robot", i)
+				chatMsg.Text = fmt.Sprint("hello", i)
 				peer.SendMessage(chatMsg, done)
 				<-done
 				ws.Done()
@@ -151,7 +151,6 @@ func robot(from, to string, quit chan os.Signal) {
 	peer.SendMessage(chatMsg2, done)
 	<-done
 
-	<-quit
 	// peer.Peer.Close()
 
 }
@@ -168,5 +167,7 @@ func main() {
 		to = os.Args[2]
 	}
 
-	robot(from, to, sc)
+	robot(from, to)
+
+	<-sc
 }

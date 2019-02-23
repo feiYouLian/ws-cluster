@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/go-xorm/xorm"
+
 	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
 	"github.com/ws-cluster/hub"
@@ -32,20 +34,26 @@ func main() {
 	}
 
 	// build a client instance of redis
-	mysqldb := database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
-	cfg.MessageStore = database.NewMysqlMessageStore(mysqldb)
+	var engine *xorm.Engine
+	if cfg.Mysql.IP != "" {
+		engine = database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
+	}
+	cfg.MessageStore = database.NewMysqlMessageStore(engine)
 
 	var cache config.Cache
 	cache.Group = database.NewMemGroupCache()
 	if cfg.Server.Mode == config.ModeCluster {
-		redis := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
-
+		redis, err := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
+		if err != nil {
+			log.Panicln(err)
+		}
 		t1 := time.Now()
 		serverTime, err := redis.Time().Result()
 		t2 := time.Now()
 		if err != nil {
 			log.Panicln(err)
 		}
+		log.Println("redis time", serverTime)
 		serverTime = serverTime.Add(t2.Sub(t1))
 
 		if math.Abs(float64(serverTime.Sub(time.Now())/time.Millisecond)) > 500 {
