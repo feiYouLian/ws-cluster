@@ -33,6 +33,11 @@ func main() {
 		log.Panicln(err)
 	}
 
+	cfg.Server.ID, err = config.BuildServerID()
+	if err != nil {
+		log.Panicln(err)
+	}
+
 	// build a client instance of redis
 	var engine *xorm.Engine
 	if cfg.Mysql.IP != "" {

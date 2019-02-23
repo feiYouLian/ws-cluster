@@ -119,7 +119,8 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
-func buildServerID() (uint64, error) {
+// BuildServerID build a serverID
+func BuildServerID() (uint64, error) {
 	// deal server id
 	_, err := os.Stat(defaultIDConfigFile)
 	if err != nil {

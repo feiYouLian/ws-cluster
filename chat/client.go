@@ -114,7 +114,7 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func robot(from, to string) {
-	peer, err := newClientPeer(secret, from, "localhost:8380", true)
+	peer, err := newClientPeer(secret, from, "192.168.1.12:8380", true)
 	if err != nil {
 		log.Println(err)
 		return
