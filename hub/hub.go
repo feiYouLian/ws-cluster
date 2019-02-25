@@ -609,13 +609,11 @@ func (h *Hub) messageHandler() {
 
 				// 读取目标client所在的服务器
 				client, err := h.clientCache.GetClient(to)
-				if err != nil || client == nil {
-					continue
-				}
-
-				// 消息转发过去
-				if server, ok := h.serverPeers[client.ServerID]; ok {
-					server.PushMessage(msg.message, nil)
+				if err == nil && client != nil {
+					// 消息转发过去
+					if server, ok := h.serverPeers[client.ServerID]; ok {
+						server.PushMessage(msg.message, nil)
+					}
 				}
 
 			} else if header.Scope == wire.ScopeGroup {

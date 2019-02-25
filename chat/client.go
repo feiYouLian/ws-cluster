@@ -137,7 +137,7 @@ func sendtoclient(peer *ClientPeer, to string) {
 // 	peer.SendMessage(chatMsg2, done)
 // 	<-done
 
-const wshost = "192.168.1.12:8380"
+const wshost = "192.168.1.9:8380"
 
 func main() {
 	// listen sys.exit

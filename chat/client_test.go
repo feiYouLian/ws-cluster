@@ -19,7 +19,7 @@ func Test_sendtoclient(t *testing.T) {
 	ticker := time.NewTicker(time.Second)
 
 	peerNum := 4000
-	sendNum := peerNum * 20
+	sendNum := peerNum * 10
 
 	defer ticker.Stop()
 	go func() {
