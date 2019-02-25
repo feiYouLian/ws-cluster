@@ -3,10 +3,16 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/core"
 	"github.com/go-xorm/xorm"
+)
+
+var (
+	// ErrInsertFail data insert affected zeo
+	ErrInsertFail = fmt.Errorf("data insert fail")
 )
 
 // MysqMessageStore mysql message store
@@ -31,7 +37,14 @@ func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
 
 // Save save message to mysql
 func (s *MysqMessageStore) Save(chatMsg *ChatMsg) error {
-
+	chatMsg.CreateAt = time.Now()
+	aff, err := s.engine.Insert(chatMsg)
+	if err != nil {
+		return err
+	}
+	if aff == 0 {
+		return ErrInsertFail
+	}
 	return nil
 }
 
