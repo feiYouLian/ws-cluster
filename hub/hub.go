@@ -59,7 +59,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	log.Println("server disconnected", p.entity.ID)
+	log.Printf("server %v disconnected", p.entity.ID)
 	done := make(chan struct{})
 	p.hub.unregister <- &delPeer{peer: p, done: done}
 	<-done
@@ -192,7 +192,7 @@ func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	log.Println("client disconnected", p.entity.ID)
+	log.Printf("client %v disconnected", p.entity.ID)
 	p.hub.unregister <- &delPeer{peer: p, done: nil}
 	return nil
 }
@@ -417,7 +417,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	// 注册节点到服务器
 	hub.register <- &addPeer{peer: clientPeer, done: nil}
-	log.Printf("client in ,%v, clientid: %v", r.RemoteAddr, clientID)
+	log.Printf("client %v connected from %v", clientID, r.RemoteAddr)
 }
 
 // 处理来自服务器节点的连接
@@ -454,6 +454,8 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
+
+	log.Printf("server %v connected from %v", ID, r.RemoteAddr)
 }
 
 func checkDigest(secret, text, digest string) bool {

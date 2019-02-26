@@ -119,7 +119,6 @@ func (p *Peer) start() {
 
 func (p *Peer) inMessageHandler() {
 	defer func() {
-		log.Println("inMessageHandler closed")
 		go p.config.Listeners.OnDisconnect()
 		p.Close()
 	}()
@@ -165,7 +164,6 @@ func (p *Peer) inMessageHandler() {
 
 // 消息队列处理
 func (p *Peer) outQueueHandler() {
-	defer log.Println("outQueueHandler closed")
 	pendingMsgs := list.New()
 
 	// We keep the waiting flag so that we know if we have a pending message
@@ -214,7 +212,6 @@ func (p *Peer) outMessageHandler() {
 	defer func() {
 		p.disconnect()
 		ticker.Stop()
-		log.Println("outMessageHandler closed")
 	}()
 Loop:
 	for {
@@ -245,7 +242,6 @@ Loop:
 				break Loop
 			}
 		case <-p.queueQuit:
-			// The hub closed the channel.
 			p.conn.WriteMessage(websocket.CloseMessage, nil)
 			break Loop
 		}
