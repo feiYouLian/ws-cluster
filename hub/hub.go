@@ -693,31 +693,25 @@ func newHubClientCache(cache database.ClientCache, isCluster bool) *ClientCache 
 
 // AddClient AddClient
 func (c *ClientCache) AddClient(client *database.Client) error {
-	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.AddClient(client)
 	}
-	log.Printf("AddClient cost :%v", time.Now().Sub(t1))
 	return nil
 }
 
 // DelClient DelClient
 func (c *ClientCache) DelClient(ID string) (int, error) {
-	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.DelClient(ID)
 	}
-	log.Printf("DelClient cost :%v", time.Now().Sub(t1))
 	return 0, nil
 }
 
 // GetClient GetClient
 func (c *ClientCache) GetClient(ID string) (*database.Client, error) {
-	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.GetClient(ID)
 	}
-	log.Printf("GetClient cost :%v", time.Now().Sub(t1))
 	return nil, nil
 }
 
