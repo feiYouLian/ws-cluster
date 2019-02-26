@@ -125,7 +125,7 @@ func sendtoclient(peer *ClientPeer, to string) {
 	<-done
 }
 
-var wshosts = []string{"192.168.0.188:8380", "192.168.0.155:8380"}
+var wshosts = []string{"192.168.0.155:8380", "192.168.0.188:8380"}
 
 func sendRobot(peerNum int) {
 	msgchan := make(chan []byte, 100)

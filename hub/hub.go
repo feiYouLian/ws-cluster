@@ -58,8 +58,10 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
+	if p.entity.ID == p.hub.ServerID {
+		return nil
+	}
 	log.Println("server disconnected", p.entity.ID)
-
 	done := make(chan struct{})
 	p.hub.unregister <- &delPeer{peer: p, done: done}
 	<-done
