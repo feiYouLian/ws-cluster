@@ -26,7 +26,7 @@ import (
 const (
 	clientFlag     = byte(0)
 	serverFlag     = byte(1)
-	reconnectTimes = 60
+	reconnectTimes = 10
 	pingInterval   = time.Second * 3
 )
 
@@ -39,9 +39,10 @@ const (
 // 这个对象用于处理跨服务节点消息收发。
 type ServerPeer struct {
 	*peer.Peer
-	hub         *Hub
-	entity      *database.Server
-	isOutServer bool
+	hub            *Hub
+	entity         *database.Server
+	isOutServer    bool
+	reconnectTimes int
 }
 
 // OnMessage 接收消息
@@ -58,9 +59,6 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	if p.entity.ID == p.hub.ServerID {
-		return nil
-	}
 	log.Println("server disconnected", p.entity.ID)
 	done := make(chan struct{})
 	p.hub.unregister <- &delPeer{peer: p, done: done}
@@ -68,16 +66,17 @@ func (p *ServerPeer) OnDisconnect() error {
 
 	// 如果是出去的服务，就尝试重连
 	if p.isOutServer {
-		for i := 0; i < reconnectTimes; i++ {
+		if p.reconnectTimes > reconnectTimes {
+			time.Sleep(time.Second * 3)
 			server, err := p.hub.serverCache.GetServer(p.entity.ID)
 			// 如果服务器列表中不存在，说明服务主动下线了。
 			if err != nil && server != nil {
-				break
+				return nil
 			}
-			time.Sleep(time.Second * 3)
 			if err := p.connect(); err == nil {
-				break
+				return nil
 			}
+			p.reconnectTimes++
 		}
 	}
 
@@ -508,7 +507,7 @@ func (h *Hub) outPeerHandler() error {
 		ID:        h.ServerID,
 		IP:        wire.GetOutboundIP().String(),
 		Port:      h.config.Server.Listen,
-		BootTime:  time.Now(),
+		StartAt:   time.Now().Unix(),
 		ClientNum: 0,
 	}
 	h.ServerSelf = &serverSelf

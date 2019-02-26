@@ -207,6 +207,7 @@ Loop:
 func (p *Peer) outMessageHandler() {
 	ticker := time.NewTicker(p.config.PingPeriod)
 	defer func() {
+		log.Println("outMessageHandler closed")
 		p.disconnect()
 		ticker.Stop()
 	}()
@@ -218,10 +219,12 @@ Loop:
 
 			w, err := p.conn.NextWriter(websocket.BinaryMessage)
 			if err != nil {
+				log.Println(err)
 				return
 			}
 			wire.WriteBytes(w, outMessage.message)
 			if err := w.Close(); err != nil {
+				log.Println(err)
 				return
 			}
 
@@ -233,6 +236,7 @@ Loop:
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println(err)
 				break
 			}
 		case <-p.queueQuit:
