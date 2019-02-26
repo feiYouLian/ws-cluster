@@ -127,17 +127,7 @@ func sendtoclient(peer *ClientPeer, to string) {
 	<-done
 }
 
-// done := make(chan struct{})
-// 	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "fb_score_notify"})
-// 	chatMsg2 := msg2.(*wire.Msgchat)
-// 	chatMsg2.From = from
-// 	chatMsg2.Type = 1
-// 	chatMsg2.Text = "{\"sport_id\":1,\"goalTime\":32,\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}"
-
-// 	peer.SendMessage(chatMsg2, done)
-// 	<-done
-
-var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
+var wshosts = []string{"192.168.0.138:8380", "192.168.0.155:8380"}
 
 func main() {
 	// listen sys.exit
