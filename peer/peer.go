@@ -146,7 +146,6 @@ func (p *Peer) inMessageHandler() {
 			if err != nil {
 				log.Println(err)
 				// no more message
-				break
 			}
 			i = i + 4 + len(msg)
 			go func(message []byte) {
