@@ -18,7 +18,7 @@ func Test_sendtoclient(t *testing.T) {
 	totalNum := 0
 	ticker := time.NewTicker(time.Second)
 
-	peerNum := 4000
+	peerNum := 1000
 	sendNum := peerNum * 10
 
 	defer ticker.Stop()
@@ -37,7 +37,8 @@ func Test_sendtoclient(t *testing.T) {
 			}
 		}
 	}()
-	syspeer, err := newClientPeer(secret, "sys", wshost, false, msgchan)
+
+	syspeer, err := newClientPeer(secret, "sys", wshosts[0], false, msgchan)
 	if err != nil {
 		log.Println(err)
 		return

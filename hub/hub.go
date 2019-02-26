@@ -67,7 +67,12 @@ func (p *ServerPeer) OnDisconnect() error {
 	// 如果是出去的服务，就尝试重连
 	if p.isOutServer {
 		for i := 0; i < reconnectTimes; i++ {
-			time.Sleep(time.Second * 1)
+			server, err := p.hub.serverCache.GetServer(p.entity.ID)
+			// 如果服务器列表中不存在，说明服务主动下线了。
+			if err != nil && server != nil {
+				break
+			}
+			time.Sleep(time.Second * 3)
 			if err := p.connect(); err == nil {
 				break
 			}
@@ -688,25 +693,31 @@ func newHubClientCache(cache database.ClientCache, isCluster bool) *ClientCache 
 
 // AddClient AddClient
 func (c *ClientCache) AddClient(client *database.Client) error {
+	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.AddClient(client)
 	}
+	log.Printf("AddClient cost :%v", time.Now().Sub(t1))
 	return nil
 }
 
 // DelClient DelClient
 func (c *ClientCache) DelClient(ID string) (int, error) {
+	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.DelClient(ID)
 	}
+	log.Printf("DelClient cost :%v", time.Now().Sub(t1))
 	return 0, nil
 }
 
 // GetClient GetClient
 func (c *ClientCache) GetClient(ID string) (*database.Client, error) {
+	t1 := time.Now()
 	if c.isCluster {
 		return c.cache.GetClient(ID)
 	}
+	log.Printf("GetClient cost :%v", time.Now().Sub(t1))
 	return nil, nil
 }
 

@@ -12,9 +12,7 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/ws-cluster/wire"
@@ -127,68 +125,55 @@ func sendtoclient(peer *ClientPeer, to string) {
 	<-done
 }
 
-// done := make(chan struct{})
-// 	msg2, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: 2, Msgtype: wire.MsgTypeChat, Scope: wire.ScopeGroup, To: "fb_score_notify"})
-// 	chatMsg2 := msg2.(*wire.Msgchat)
-// 	chatMsg2.From = from
-// 	chatMsg2.Type = 1
-// 	chatMsg2.Text = "{\"sport_id\":1,\"goalTime\":32,\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}"
+var wshosts = []string{"192.168.0.188:8380", "192.168.0.155:8380"}
 
-// 	peer.SendMessage(chatMsg2, done)
-// 	<-done
-
-var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
-
-func main() {
-	// listen sys.exit
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, os.Interrupt)
-	var peerNum = 1
-	if len(os.Args) >= 2 {
-		peerNum, _ = strconv.Atoi(os.Args[1])
-	}
-	// peers := make(map[string]*ClientPeer, peerNum)
-	addpeer := make(chan *ClientPeer, 100)
+func sendRobot(peerNum int) {
 	msgchan := make(chan []byte, 100)
-	intervalMsgNum := 0
-	totalMsgNum := 0
-	totalPeerNum := 0
+	quit := make(chan bool)
+	ackNum := 0
+	totalNum := 0
 	ticker := time.NewTicker(time.Second)
+
+	sendNum := peerNum * 10
+
 	defer ticker.Stop()
 	go func() {
 		for {
 			select {
-			case <-addpeer:
-				totalPeerNum++
 			case <-msgchan:
-				intervalMsgNum++
-				totalMsgNum++
+				ackNum++
+				totalNum++
 			case <-ticker.C:
-				log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,总节点数：%v", intervalMsgNum, totalMsgNum, totalPeerNum)
-				intervalMsgNum = 0
+				log.Printf("1秒内收到ACK消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
+				ackNum = 0
+				if totalNum == sendNum {
+					quit <- true
+				}
 			}
 		}
 	}()
 
-	ws := sync.WaitGroup{}
-	t1 := time.Now()
-	for index := 0; index < peerNum; index++ {
-		ws.Add(1)
-		go func(i int) {
-			wshost := wshosts[i%2]
-			peer, err := newClientPeer(secret, fmt.Sprintf("client_%v", i), wshost, false, msgchan)
-			if err != nil {
-				log.Println(err)
-			} else {
-				addpeer <- peer
-			}
-			ws.Done()
-		}(index)
+	syspeer, err := newClientPeer(secret, "sys", wshosts[0], false, msgchan)
+	if err != nil {
+		log.Println(err)
+		return
 	}
-	ws.Wait()
 
+	t1 := time.Now()
+	for index := 0; index < sendNum; index++ {
+		sendtoclient(syspeer, fmt.Sprintf("client_%v", index%peerNum))
+	}
 	t2 := time.Now()
-	log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
+	log.Printf("send message[%v], cost time: %v", sendNum, t2.Sub(t1))
+	<-quit
+}
 
-	<-sc
+func main() {
+	// listen sys.exit
+	var peerNum = 1
+	if len(os.Args) >= 2 {
+		peerNum, _ = strconv.Atoi(os.Args[1])
+	}
+
+	sendRobot(peerNum)
 }

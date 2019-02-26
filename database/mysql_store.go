@@ -37,6 +37,9 @@ func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
 
 // Save save message to mysql
 func (s *MysqMessageStore) Save(chatMsg *ChatMsg) error {
+	if s.engine == nil {
+		return nil
+	}
 	chatMsg.CreateAt = time.Now()
 	aff, err := s.engine.Insert(chatMsg)
 	if err != nil {
