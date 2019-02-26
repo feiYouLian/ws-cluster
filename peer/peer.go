@@ -20,7 +20,7 @@ const (
 	defaultPongWait = 60 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
-	defaultPingPeriod = (defaultPongWait * 8) / 10
+	defaultPingPeriod = 30 * time.Second
 
 	// Maximum message size allowed from peer.
 	defaultMaxMessageSize = 512
@@ -119,12 +119,16 @@ func (p *Peer) start() {
 
 func (p *Peer) inMessageHandler() {
 	defer func() {
-		p.config.Listeners.OnDisconnect()
-		p.disconnect()
+		log.Println("inMessageHandler closed")
+		go p.config.Listeners.OnDisconnect()
+		p.Close()
 	}()
 	p.conn.SetReadLimit(int64(p.config.MaxMessageSize))
 	p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
-	p.conn.SetPongHandler(func(string) error { p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait)); return nil })
+	p.conn.SetPongHandler(func(string) error {
+		p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
+		return nil
+	})
 	for {
 		messageType, message, err := p.conn.ReadMessage()
 		if err != nil {
@@ -146,6 +150,7 @@ func (p *Peer) inMessageHandler() {
 			if err != nil {
 				log.Println(err)
 				// no more message
+				break
 			}
 			i = i + 4 + len(msg)
 			go func(message []byte) {
@@ -160,6 +165,7 @@ func (p *Peer) inMessageHandler() {
 
 // 消息队列处理
 func (p *Peer) outQueueHandler() {
+	defer log.Println("outQueueHandler closed")
 	pendingMsgs := list.New()
 
 	// We keep the waiting flag so that we know if we have a pending message
@@ -206,9 +212,9 @@ Loop:
 func (p *Peer) outMessageHandler() {
 	ticker := time.NewTicker(p.config.PingPeriod)
 	defer func() {
-		log.Println("outMessageHandler closed")
 		p.disconnect()
 		ticker.Stop()
+		log.Println("outMessageHandler closed")
 	}()
 Loop:
 	for {
@@ -236,7 +242,7 @@ Loop:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Println(err)
-				break
+				break Loop
 			}
 		case <-p.queueQuit:
 			// The hub closed the channel.

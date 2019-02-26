@@ -563,11 +563,8 @@ func (h *Hub) peerHandler() {
 				peer := p.peer.(*ClientPeer)
 				if _, ok := h.clientPeers[peer.entity.ID]; ok {
 					delete(h.clientPeers, peer.entity.ID)
-					peer.Close()
-
 					h.clientCache.DelClient(peer.entity.ID)
 				}
-
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				if _, ok := h.serverPeers[peer.entity.ID]; ok {
