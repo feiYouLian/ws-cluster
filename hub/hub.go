@@ -59,27 +59,30 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	log.Printf("server %v disconnected", p.entity.ID)
-	done := make(chan struct{})
-	p.hub.unregister <- &delPeer{peer: p, done: done}
-	<-done
+	log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
+	if !p.isOutServer { //如果不是连接出去服务
+		p.hub.unregister <- &delPeer{peer: p}
+		return nil
+	}
 
-	// 如果是出去的服务，就尝试重连
-	if p.isOutServer {
-		if p.reconnectTimes > reconnectTimes {
-			time.Sleep(time.Second * 3)
-			server, err := p.hub.serverCache.GetServer(p.entity.ID)
-			// 如果服务器列表中不存在，说明服务主动下线了。
-			if err != nil && server != nil {
-				return nil
-			}
-			if err := p.connect(); err == nil {
-				return nil
-			}
-			p.reconnectTimes++
+	server, _ := p.hub.serverCache.GetServer(p.entity.ID)
+	// 如果服务器列表中不存在，说明服务主动下线了。
+	if server == nil {
+		p.hub.unregister <- &delPeer{peer: p}
+		return nil
+	}
+
+	// 尝试重连
+	for p.reconnectTimes < reconnectTimes {
+		time.Sleep(time.Second * 3)
+		p.reconnectTimes++
+		if err := p.connect(); err == nil {
+			// 重连成功
+			return nil
 		}
 	}
 
+	p.hub.unregister <- &delPeer{peer: p}
 	return nil
 }
 
@@ -112,6 +115,7 @@ func (p *ServerPeer) connect() error {
 		log.Println("dial:", err)
 		return err
 	}
+	p.reconnectTimes = 0
 	p.SetConnection(conn)
 	return nil
 }

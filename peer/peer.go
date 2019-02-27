@@ -115,12 +115,13 @@ func (p *Peer) start() {
 	go p.inMessageHandler()
 	go p.outQueueHandler()
 	go p.outMessageHandler()
+	log.Printf("peer %v started", p.id)
 }
 
 func (p *Peer) inMessageHandler() {
 	defer func() {
-		go p.config.Listeners.OnDisconnect()
 		p.Close()
+		p.config.Listeners.OnDisconnect()
 	}()
 	p.conn.SetReadLimit(int64(p.config.MaxMessageSize))
 	p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
@@ -132,12 +133,12 @@ func (p *Peer) inMessageHandler() {
 		messageType, message, err := p.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Println("error:", err)
 			}
 			break
 		}
 		if messageType == websocket.CloseMessage {
-			log.Printf("closed: %v", p.id)
+			log.Println("closed:", p.id)
 			break
 		}
 
