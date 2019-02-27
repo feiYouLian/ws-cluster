@@ -98,6 +98,7 @@ func (c *RedisServerCache) GetServer(ID uint64) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if res == "" {
 		c.client.SMove(serversRedis, serversDownRedis, ID)
 		return nil, nil
@@ -145,7 +146,9 @@ func (c *RedisServerCache) Clean() error {
 		return err
 	}
 	for _, serverID := range serverIds {
-		if val, _ := c.client.Exists(fmt.Sprint(serverID)).Result(); val == 0 {
+		skey := fmt.Sprintf(serverReidsPattern, serverID)
+		if val, _ := c.client.Exists(skey).Result(); val == 0 {
+			log.Printf("clean server %v", serverID)
 			c.client.SMove(serversRedis, serversDownRedis, serverID)
 		}
 	}
