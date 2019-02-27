@@ -588,19 +588,6 @@ func (h *Hub) peerHandler() {
 	}
 }
 
-// func isMasterServer(servers []database.Server, ID, exID uint64) bool {
-// 	isMaster := true
-// 	for _, s := range servers {
-// 		if s.ID == exID {
-// 			continue
-// 		}
-// 		if s.ID < ID { // 最小的 id 就是存活最久的服务，就是主服务
-// 			isMaster = false
-// 		}
-// 	}
-// 	return isMaster
-// }
-
 // 处理消息转发
 func (h *Hub) messageHandler() {
 	log.Println("start messageHandler")
@@ -677,15 +664,21 @@ func (h *Hub) Close() {
 
 // clean clean hub
 func (h *Hub) clean() {
-	for _, peer := range h.clientPeers {
-		peer.Close()
-		h.clientCache.DelClient(peer.entity.ID)
-	}
-	log.Println("clean clients in cache")
 	if h.config.Server.Mode == config.ModeCluster {
 		h.serverCache.DelServer(h.ServerID)
 		log.Println("clean server in cache")
 	}
+
+	for _, peer := range h.clientPeers {
+		peer.Close()
+		h.clientCache.DelClient(peer.entity.ID)
+	}
+
+	for _, peer := range h.serverPeers {
+		peer.Close()
+	}
+
+	time.Sleep(time.Second)
 }
 
 // ClientCache ClientCache wapper
