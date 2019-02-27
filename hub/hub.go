@@ -524,6 +524,11 @@ func (h *Hub) outPeerHandler() error {
 		if server.ID == serverSelf.ID {
 			continue
 		}
+		// ID  不一样，IP和端口一样
+		if server.IP == serverSelf.IP && server.Port == serverSelf.Port {
+			h.serverCache.DelServer(server.ID)
+			continue
+		}
 		serverPeer, err := newServerPeer(h, &server)
 		if err != nil {
 			continue
