@@ -138,6 +138,21 @@ func (c *RedisServerCache) GetServers() ([]Server, error) {
 	return servers, nil
 }
 
+// Clean clean expired server
+func (c *RedisServerCache) Clean() error {
+	serverIds, err := c.client.SMembers(serversRedis).Result()
+	if err != nil {
+		return err
+	}
+	for _, serverID := range serverIds {
+		if val, _ := c.client.Exists(fmt.Sprint(serverID)).Result(); val == 0 {
+			c.client.SMove(serversRedis, serversDownRedis, serverID)
+		}
+	}
+	c.client.Del(serversDownRedis)
+	return nil
+}
+
 // InitRedis return a redis instance
 func InitRedis(ip string, port int, pass string) (*redis.Client, error) {
 	redisdb := redis.NewClient(&redis.Options{

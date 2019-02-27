@@ -13,6 +13,7 @@ type ServerCache interface {
 	GetServer(ID uint64) (*Server, error)
 	DelServer(ID uint64) error
 	GetServers() ([]Server, error)
+	Clean() error
 }
 
 // GroupCache GroupCache
@@ -21,4 +22,3 @@ type GroupCache interface {
 	Leave(group string, clientID string) error
 	GetGroupMembers(group string) ([]string, error)
 }
-

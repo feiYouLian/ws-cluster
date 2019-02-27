@@ -10,5 +10,5 @@ func TestInitRedis(t *testing.T) {
 	keys, _ := redis.Keys("*").Result()
 	fmt.Println(keys)
 
-	redis.Del(keys...)
+	// redis.Del(keys...)
 }

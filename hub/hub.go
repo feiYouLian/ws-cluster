@@ -493,8 +493,30 @@ func (h *Hub) pingHandler() error {
 			server := h.ServerSelf
 			server.ClientNum = len(h.clientPeers)
 			h.serverCache.SetServer(server)
+
+			isMaster := true
+			for _, s := range h.serverPeers {
+				if s.entity.ID < server.ID {
+					isMaster = false
+				}
+			}
+			if isMaster {
+				h.serverCache.Clean()
+			}
 		}
 	}
+}
+func isMasterServer(servers []database.Server, ID, exID uint64) bool {
+	isMaster := true
+	for _, s := range servers {
+		if s.ID == exID {
+			continue
+		}
+		if s.ID < ID { // 最小的 id 就是存活最久的服务，就是主服务
+			isMaster = false
+		}
+	}
+	return isMaster
 }
 
 // 与其它服务器节点建立长连接
