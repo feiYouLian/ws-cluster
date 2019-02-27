@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -11,7 +12,9 @@ import (
 
 const (
 	clientReidsPattern = "Client_%v"
+	serverReidsPattern = "Server_%v"
 	serversRedis       = "Server_List"
+	serversDownRedis   = "Server_Down_List"
 )
 
 // RedisClientCache redis ClientCache
@@ -74,9 +77,14 @@ func NewRedisServerCache(client *redis.Client) *RedisServerCache {
 
 // SetServer SetServer
 func (c *RedisServerCache) SetServer(server *Server) error {
-	ser, _ := json.Marshal(server)
-	cmd := c.client.HSet(serversRedis, fmt.Sprint(server.ID), ser)
+	cmd := c.client.SAdd(serversRedis, server.ID)
 	_, err := cmd.Result()
+	if err != nil {
+		return err
+	}
+	ser, _ := json.Marshal(server)
+	skey := fmt.Sprintf(serverReidsPattern, server.ID)
+	_, err = c.client.Set(skey, ser, time.Second*9).Result()
 	if err != nil {
 		return err
 	}
@@ -85,10 +93,14 @@ func (c *RedisServerCache) SetServer(server *Server) error {
 
 // GetServer GetServer
 func (c *RedisServerCache) GetServer(ID uint64) (*Server, error) {
-	cmd := c.client.HGet(serversRedis, fmt.Sprint(ID))
-	res, err := cmd.Result()
+	skey := fmt.Sprintf(serverReidsPattern, ID)
+	res, err := c.client.Get(skey).Result()
 	if err != nil {
 		return nil, err
+	}
+	if res == "" {
+		c.client.SMove(serversRedis, serversDownRedis, ID)
+		return nil, nil
 	}
 	server := &Server{}
 	err = json.Unmarshal([]byte(res), server)
@@ -100,9 +112,9 @@ func (c *RedisServerCache) GetServer(ID uint64) (*Server, error) {
 
 // DelServer DelServer
 func (c *RedisServerCache) DelServer(ID uint64) error {
-	cmd := c.client.HDel(serversRedis, fmt.Sprint(ID))
-	_, err := cmd.Result()
-	if err != nil {
+	c.client.SMove(serversRedis, serversDownRedis, ID)
+	skey := fmt.Sprintf(serverReidsPattern, ID)
+	if _, err := c.client.Del(skey).Result(); err != nil {
 		return err
 	}
 	return nil
@@ -110,21 +122,18 @@ func (c *RedisServerCache) DelServer(ID uint64) error {
 
 // GetServers GetServers
 func (c *RedisServerCache) GetServers() ([]Server, error) {
-	cmd := c.client.HGetAll(serversRedis)
-	res, err := cmd.Result()
+	serverIds, err := c.client.SMembers(serversRedis).Result()
 	if err != nil {
 		return nil, err
 	}
-	servers := make([]Server, len(res))
-	i := 0
-	for _, item := range res {
-		server := Server{}
-		err := json.Unmarshal([]byte(item), &server)
-		if err != nil {
+	servers := make([]Server, 0)
+	for _, serverID := range serverIds {
+		ID, _ := strconv.ParseUint(serverID, 0, 64)
+		server, err := c.GetServer(ID)
+		if err != nil || server == nil {
 			continue
 		}
-		servers[i] = server
-		i++
+		servers = append(servers, *server)
 	}
 	return servers, nil
 }

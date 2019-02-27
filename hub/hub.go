@@ -338,13 +338,11 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	}
 
 	var clientCache database.ClientCache
-	var serverCache database.ServerCache
 
 	if cfg.Server.Mode == config.ModeSingle {
 		clientCache = newHubClientCache(cfg.Cache.Client, false)
 	} else {
 		clientCache = newHubClientCache(cfg.Cache.Client, true)
-		serverCache = newHubServerCache(cfg.Cache.Server, pingInterval)
 	}
 
 	hub := &Hub{
@@ -352,7 +350,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		config:       cfg,
 		ServerID:     cfg.Server.ID,
 		clientCache:  clientCache,
-		serverCache:  serverCache,
+		serverCache:  cfg.Cache.Server,
 		groupCache:   cfg.Cache.Group,
 		messageStore: cfg.MessageStore,
 		clientPeers:  make(map[string]*ClientPeer, 1000),
@@ -718,55 +716,4 @@ func (c *ClientCache) GetClient(ID string) (*database.Client, error) {
 		return c.cache.GetClient(ID)
 	}
 	return nil, nil
-}
-
-// ServerCache ServerCache
-type ServerCache struct {
-	cache        database.ServerCache
-	pingInterval time.Duration
-}
-
-func newHubServerCache(cache database.ServerCache, pingInterval time.Duration) *ServerCache {
-	return &ServerCache{cache: cache, pingInterval: pingInterval}
-}
-
-// SetServer SetServer
-func (c *ServerCache) SetServer(server *database.Server) error {
-	server.Ping = time.Now().Unix()
-	return c.cache.SetServer(server)
-}
-
-// GetServer GetServer
-func (c *ServerCache) GetServer(ID uint64) (*database.Server, error) {
-	server, err := c.cache.GetServer(ID)
-	if err != nil {
-		return nil, err
-	}
-	if time.Duration(time.Now().Unix()-server.Ping)*time.Second > c.pingInterval*3 {
-		c.cache.DelServer(server.ID)
-		return nil, nil
-	}
-	return server, nil
-}
-
-// DelServer DelServer
-func (c *ServerCache) DelServer(ID uint64) error {
-	return c.cache.DelServer(ID)
-}
-
-// GetServers GetServers
-func (c *ServerCache) GetServers() ([]database.Server, error) {
-	servers, err := c.cache.GetServers()
-	if err != nil {
-		return nil, err
-	}
-	aliveServers := make([]database.Server, 0)
-	for _, server := range servers {
-		if time.Duration(time.Now().Unix()-server.Ping)*time.Second > c.pingInterval*3 {
-			c.cache.DelServer(server.ID)
-			continue
-		}
-		aliveServers = append(aliveServers, server)
-	}
-	return servers, nil
 }

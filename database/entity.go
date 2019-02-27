@@ -29,7 +29,6 @@ type Server struct {
 	// ClientNum 在线人数
 	ClientNum  int
 	StartAt    int64
-	Ping       int64
 	OutServers map[uint64]string
 }
 
