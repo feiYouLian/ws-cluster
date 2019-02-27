@@ -510,11 +510,12 @@ func (h *Hub) outPeerHandler() error {
 		return err
 	}
 	serverSelf := database.Server{
-		ID:        h.ServerID,
-		IP:        wire.GetOutboundIP().String(),
-		Port:      h.config.Server.Listen,
-		StartAt:   time.Now().Unix(),
-		ClientNum: 0,
+		ID:         h.ServerID,
+		IP:         wire.GetOutboundIP().String(),
+		Port:       h.config.Server.Listen,
+		StartAt:    time.Now().Unix(),
+		ClientNum:  0,
+		OutServers: make(map[uint64]string),
 	}
 	h.ServerSelf = &serverSelf
 
@@ -559,6 +560,7 @@ func (h *Hub) peerHandler() {
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				h.serverPeers[peer.entity.ID] = peer
+				h.ServerSelf.OutServers[peer.entity.ID] = time.Now().Format(time.Stamp)
 			}
 			if p.done != nil {
 				p.done <- struct{}{}
@@ -575,6 +577,7 @@ func (h *Hub) peerHandler() {
 				peer := p.peer.(*ServerPeer)
 				if _, ok := h.serverPeers[peer.entity.ID]; ok {
 					delete(h.serverPeers, peer.entity.ID)
+					delete(h.ServerSelf.OutServers, peer.entity.ID)
 					peer.Close()
 				}
 			}

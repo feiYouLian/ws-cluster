@@ -27,9 +27,10 @@ type Server struct {
 	IP   string
 	Port int
 	// ClientNum 在线人数
-	ClientNum int
-	StartAt   int64
-	Ping      int64
+	ClientNum  int
+	StartAt    int64
+	Ping       int64
+	OutServers map[uint64]string
 }
 
 // ChatMsg 聊消息
