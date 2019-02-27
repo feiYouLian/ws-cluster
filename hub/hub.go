@@ -65,21 +65,21 @@ func (p *ServerPeer) OnDisconnect() error {
 		return nil
 	}
 
-	server, _ := p.hub.serverCache.GetServer(p.entity.ID)
-	// 如果服务器列表中不存在，说明服务主动下线了。
-	if server == nil {
-		p.hub.unregister <- &delPeer{peer: p}
-		return nil
-	}
-
 	// 尝试重连
 	for p.reconnectTimes < reconnectTimes {
-		time.Sleep(time.Second * 3)
+		server, _ := p.hub.serverCache.GetServer(p.entity.ID)
+		// 如果服务器列表中不存在，说明服务宕机了
+		if server == nil {
+			p.hub.unregister <- &delPeer{peer: p}
+			return nil
+		}
 		p.reconnectTimes++
 		if err := p.connect(); err == nil {
 			// 重连成功
 			return nil
 		}
+
+		time.Sleep(time.Second * 3)
 	}
 
 	p.hub.unregister <- &delPeer{peer: p}
@@ -737,7 +737,15 @@ func (c *ServerCache) SetServer(server *database.Server) error {
 
 // GetServer GetServer
 func (c *ServerCache) GetServer(ID uint64) (*database.Server, error) {
-	return c.cache.GetServer(ID)
+	server, err := c.cache.GetServer(ID)
+	if err != nil {
+		return nil, err
+	}
+	if time.Duration(time.Now().Unix()-server.Ping)*time.Second > c.pingInterval*3 {
+		c.cache.DelServer(server.ID)
+		return nil, nil
+	}
+	return server, nil
 }
 
 // DelServer DelServer
