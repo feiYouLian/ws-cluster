@@ -1,7 +1,6 @@
 package database
 
 import (
-	"log"
 	"sync"
 	"time"
 )
@@ -39,7 +38,7 @@ func (c *MemGroupCache) Join(group string, clientID string) error {
 	if _, ok := g.Clients[clientID]; !ok {
 		g.Clients[clientID] = true
 	}
-	log.Println(g.Clients)
+	// log.Println(g.Clients)
 	g.rw.Unlock()
 	return nil
 }
