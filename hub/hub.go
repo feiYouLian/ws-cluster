@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -370,6 +371,10 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	http.HandleFunc("/server", func(w http.ResponseWriter, r *http.Request) {
 		handleServerWebSocket(hub, w, r)
 	})
+
+	http.HandleFunc("/sendMsg", func(w http.ResponseWriter, r *http.Request) {
+		httpSendMsgHandler(hub, w, r)
+	})
 	go func() {
 		listenIP := cfg.Server.Addr
 		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen))
@@ -458,6 +463,45 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
 
 	log.Printf("server %v connected from %v", ID, r.RemoteAddr)
+}
+
+// SendMessageBody SendMessageBody
+type SendMessageBody struct {
+	From  string
+	To    string
+	Scope uint8
+	Type  uint8
+	Text  string
+	Extra string
+}
+
+// 处理 http 过来的消息发送
+func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	var body SendMessageBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	header := &wire.MessageHeader{
+		ID:      uint32(time.Now().Unix()),
+		Msgtype: wire.MsgTypeChat,
+		Scope:   body.Scope,
+		To:      body.To,
+	}
+	msg, _ := wire.MakeEmptyMessage(header)
+	msgchat := msg.(*wire.Msgchat)
+	msgchat.Text = body.Text
+	msgchat.Type = body.Type
+	msgchat.Extra = body.Extra
+	msgchat.From = body.From
+	buf := &bytes.Buffer{}
+	err := wire.WriteMessage(buf, msg)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	hub.sendMessage <- sendMessage{from: clientFlag, header: header, message: buf.Bytes()}
+	w.Write([]byte("ok"))
 }
 
 func checkDigest(secret, text, digest string) bool {
@@ -650,7 +694,6 @@ func (h *Hub) messageHandler() {
 				}
 				// 读取群用户列表。转发
 				clients, _ := h.groupCache.GetGroupMembers(group)
-				log.Println("send group message to ", clients)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
 						client.PushMessage(msg.message, nil)

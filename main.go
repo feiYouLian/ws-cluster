@@ -62,7 +62,7 @@ func main() {
 		serverTime = serverTime.Add(t2.Sub(t1))
 
 		if math.Abs(float64(serverTime.Sub(time.Now())/time.Millisecond)) > 500 {
-			log.Panicln("system time is incorrect")
+			log.Panicln("system time is incorrect", time.Now())
 		}
 		cache.Client = database.NewRedisClientCache(redis)
 		cache.Server = database.NewRedisServerCache(redis)
