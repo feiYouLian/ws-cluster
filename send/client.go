@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ws-cluster/hub"
+	"github.com/ws-cluster/database"
 
 	"github.com/ws-cluster/wire"
 )
@@ -21,16 +21,16 @@ const (
 
 func main() {
 
-	msg := hub.SendMessageBody{
+	msg := database.ChatMsg{
 		From:  "sys",
 		Scope: wire.ScopeGroup,
 		To:    "fb_bet_now_notify",
 		Type:  1,
-		Text:  "hello",
+		Text:  "1322324",
 	}
 
 	d, _ := json.Marshal(msg)
-	resp, err := http.Post("http://localhost:8380/sendMsg", "application/json", bytes.NewBuffer(d))
+	resp, err := http.Post("http://192.168.0.127:8380/sendMsg", "application/json", bytes.NewBuffer(d))
 	if err != nil {
 		fmt.Println(err)
 		return

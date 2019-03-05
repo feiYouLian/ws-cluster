@@ -40,5 +40,6 @@ type ChatMsg struct {
 	To       string
 	Type     uint8 //msg type
 	Text     string
+	Extra    string
 	CreateAt time.Time
 }

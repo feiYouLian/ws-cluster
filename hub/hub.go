@@ -465,19 +465,9 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	log.Printf("server %v connected from %v", ID, r.RemoteAddr)
 }
 
-// SendMessageBody SendMessageBody
-type SendMessageBody struct {
-	From  string
-	To    string
-	Scope uint8
-	Type  uint8
-	Text  string
-	Extra string
-}
-
 // 处理 http 过来的消息发送
 func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	var body SendMessageBody
+	var body database.ChatMsg
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
