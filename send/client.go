@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/ws-cluster/database"
 
@@ -30,7 +31,11 @@ func main() {
 	}
 
 	d, _ := json.Marshal(msg)
-	resp, err := http.Post("http://192.168.0.127:8380/sendMsg", "application/json", bytes.NewBuffer(d))
+	client := &http.Client{
+		Timeout: time.Second * 3,
+	}
+
+	resp, err := client.Post("http://192.168.0.127:8380/sendMsg", "application/json", bytes.NewBuffer(d))
 	if err != nil {
 		fmt.Println(err)
 		return

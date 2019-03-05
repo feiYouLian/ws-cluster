@@ -684,6 +684,7 @@ func (h *Hub) messageHandler() {
 				}
 				// 读取群用户列表。转发
 				clients, _ := h.groupCache.GetGroupMembers(group)
+				log.Println("group message to clients:", clients)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
 						client.PushMessage(msg.message, nil)
