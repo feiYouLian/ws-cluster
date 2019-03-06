@@ -472,20 +472,26 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	fmt.Println("httpsendmsg", body)
+
 	header := &wire.MessageHeader{
 		ID:      uint32(time.Now().Unix()),
 		Msgtype: wire.MsgTypeChat,
 		Scope:   body.Scope,
 		To:      body.To,
 	}
-	msg, _ := wire.MakeEmptyMessage(header)
+	msg, err := wire.MakeEmptyMessage(header)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
 	msgchat := msg.(*wire.Msgchat)
 	msgchat.Text = body.Text
 	msgchat.Type = body.Type
 	msgchat.Extra = body.Extra
 	msgchat.From = body.From
 	buf := &bytes.Buffer{}
-	err := wire.WriteMessage(buf, msg)
+	err = wire.WriteMessage(buf, msg)
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		return
