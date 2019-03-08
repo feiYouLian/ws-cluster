@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ws-cluster/database"
@@ -21,25 +22,35 @@ const (
 )
 
 func main() {
+	wg := sync.WaitGroup{}
 
-	msg := database.ChatMsg{
-		From:  "sys",
-		Scope: wire.ScopeGroup,
-		To:    "fb_bet_now_notify",
-		Type:  1,
-		Text:  "1276099",
+	for index := 0; index < 100; index++ {
+		go func() {
+			wg.Add(1)
+			defer wg.Done()
+			msg := database.ChatMsg{
+				From:  "sys",
+				Scope: wire.ScopeGroup,
+				To:    "fb_bet_now_notify",
+				Type:  1,
+				Text:  "1276099",
+			}
+
+			d, _ := json.Marshal(msg)
+			client := &http.Client{
+				Timeout: time.Second * 3,
+			}
+
+			resp, err := client.Post("http://192.168.0.188:8380/msg/send", "application/json", bytes.NewBuffer(d))
+
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Println(resp.Status)
+		}()
 	}
 
-	d, _ := json.Marshal(msg)
-	client := &http.Client{
-		Timeout: time.Second * 3,
-	}
+	wg.Wait()
 
-	resp, err := client.Post("http://192.168.0.127:8380/sendMsg", "application/json", bytes.NewBuffer(d))
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(resp.Status)
 }

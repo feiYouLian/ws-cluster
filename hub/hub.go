@@ -372,9 +372,10 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		handleServerWebSocket(hub, w, r)
 	})
 
-	http.HandleFunc("/sendMsg", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/msg/send", func(w http.ResponseWriter, r *http.Request) {
 		httpSendMsgHandler(hub, w, r)
 	})
+
 	go func() {
 		listenIP := cfg.Server.Addr
 		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen))
@@ -474,6 +475,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	fmt.Println("httpSendMsg ", body)
 
 	header := &wire.MessageHeader{
 		ID:      uint32(time.Now().Unix()),
@@ -498,7 +500,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hub.sendMessage <- sendMessage{from: clientFlag, header: header, message: buf.Bytes()}
-	fmt.Fprint(w, "0k")
+	fmt.Fprint(w, "ok")
 }
 
 func checkDigest(secret, text, digest string) bool {
