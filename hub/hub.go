@@ -467,12 +467,13 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理 http 过来的消息发送
 func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	fmt.Println("httpSendMsg from ", r.RemoteAddr)
+
 	var body database.ChatMsg
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	fmt.Println("httpsendmsg", body)
 
 	header := &wire.MessageHeader{
 		ID:      uint32(time.Now().Unix()),
@@ -482,7 +483,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := wire.MakeEmptyMessage(header)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		fmt.Fprint(w, err.Error())
 		return
 	}
 	msgchat := msg.(*wire.Msgchat)
@@ -493,11 +494,11 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	buf := &bytes.Buffer{}
 	err = wire.WriteMessage(buf, msg)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		fmt.Fprint(w, err.Error())
 		return
 	}
 	hub.sendMessage <- sendMessage{from: clientFlag, header: header, message: buf.Bytes()}
-	w.Write([]byte("ok"))
+	fmt.Fprint(w, "0k")
 }
 
 func checkDigest(secret, text, digest string) bool {
