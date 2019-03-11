@@ -24,7 +24,7 @@ const (
 func main() {
 	wg := sync.WaitGroup{}
 
-	for index := 0; index < 100; index++ {
+	for index := 0; index < 500; index++ {
 		go func() {
 			wg.Add(1)
 			defer wg.Done()
@@ -41,7 +41,7 @@ func main() {
 				Timeout: time.Second * 3,
 			}
 
-			resp, err := client.Post("http://192.168.0.188:8380/msg/send", "application/json", bytes.NewBuffer(d))
+			resp, err := client.Post("http://192.168.0.127:8380/msg/send", "application/json", bytes.NewBuffer(d))
 
 			if err != nil {
 				fmt.Println(err)
