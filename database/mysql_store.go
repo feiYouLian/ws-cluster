@@ -3,7 +3,6 @@ package database
 import (
 	"fmt"
 	"log"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/core"
@@ -36,12 +35,11 @@ func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
 }
 
 // Save save message to mysql
-func (s *MysqMessageStore) Save(chatMsg *ChatMsg) error {
+func (s *MysqMessageStore) Save(chatMsgs ...*ChatMsg) error {
 	if s.engine == nil {
 		return nil
 	}
-	chatMsg.CreateAt = time.Now()
-	aff, err := s.engine.Insert(chatMsg)
+	aff, err := s.engine.Insert(chatMsgs)
 	if err != nil {
 		return err
 	}

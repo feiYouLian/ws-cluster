@@ -33,12 +33,13 @@ const (
 
 // ServerConfig ServerConfig
 type ServerConfig struct {
-	ID     uint64 `description:"server id"`
-	Addr   string
-	Listen int
-	Secret string
-	Origin string
-	Mode   int
+	ID        uint64 `description:"server id"`
+	Addr      string
+	Listen    int
+	Secret    string
+	Origin    string
+	Mode      int
+	CachePath string
 }
 
 // RedisConfig redis config

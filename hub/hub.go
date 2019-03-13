@@ -10,9 +10,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ws-cluster/filelog"
 
 	"github.com/ws-cluster/config"
 
@@ -130,22 +133,18 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message []byte) error {
-	msg, err := wire.ReadMessage(bytes.NewReader(message))
+	header, err := wire.ReadHeader(bytes.NewReader(message))
 	if err != nil {
 		return err
 	}
 	st := wire.AckStateSent
 
 	// 处理消息逻辑
-	switch msg.Header().Msgtype {
+	switch header.Msgtype {
 	case wire.MsgTypeChat:
-		// 保存消息到 db
-		err = p.saveMessage(msg.(*wire.Msgchat))
-		if err != nil {
-			log.Println(err)
-			st = wire.AckStateFail
-		}
+		p.hub.messageLog.Write(message)
 	case wire.MsgTypeGroupInOut:
+		msg, err := wire.ReadMessage(bytes.NewReader(message))
 		msgGroup := msg.(*wire.MsgGroupInOut)
 		for _, group := range msgGroup.Groups {
 			switch msgGroup.InOut {
@@ -163,37 +162,37 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 		}
 	}
 
-	if msg.Header().Scope != wire.ScopeNull && st != wire.AckStateFail {
-		log.Println("message forward to hub", msg.Header())
+	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
+		log.Println("message forward to hub", header)
 		// 消息转发
-		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: msg.Header()}
+		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: header}
 	}
 
 	// message ack
-	ackmsg, _ := wire.MakeAckMessage(msg.Header().ID, st)
+	ackmsg, _ := wire.MakeAckMessage(header.ID, st)
 	p.PushMessage(ackmsg, nil)
 	return nil
 }
 
-func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
-	done := make(chan bool)
-	chatmsg := &database.ChatMsg{
-		From:     p.entity.ID,
-		To:       chatMsg.Header().To,
-		Scope:    chatMsg.Header().Scope,
-		Type:     chatMsg.Type,
-		Text:     chatMsg.Text,
-		CreateAt: time.Now(),
-	}
-	p.hub.saveMessage <- saveMessage{chatmsg, done}
-	// wait
-	saved := <-done
-	if !saved {
-		return fmt.Errorf("message saved failed")
-	}
+// func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
+// 	done := make(chan bool)
+// 	chatmsg := &database.ChatMsg{
+// 		From:     p.entity.ID,
+// 		To:       chatMsg.Header().To,
+// 		Scope:    chatMsg.Header().Scope,
+// 		Type:     chatMsg.Type,
+// 		Text:     chatMsg.Text,
+// 		CreateAt: time.Now(),
+// 	}
+// 	p.hub.saveMessage <- saveMessage{chatmsg, done}
+// 	// wait
+// 	saved := <-done
+// 	if !saved {
+// 		return fmt.Errorf("message saved failed")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
@@ -280,10 +279,10 @@ type sendMessage struct {
 	message []byte
 }
 
-type saveMessage struct {
-	msg  *database.ChatMsg
-	done chan bool //
-}
+// type saveMessage struct {
+// 	msg  *database.ChatMsg
+// 	done chan bool //
+// }
 
 type addPeer struct {
 	peer interface{}
@@ -305,17 +304,18 @@ type Hub struct {
 	groupCache  database.GroupCache
 	serverCache database.ServerCache
 
-	messageStore database.MessageStore
 	// clientPeers 缓存客户端节点数据
 	clientPeers map[string]*ClientPeer
 	// serverPeers 缓存服务端节点数据
 	serverPeers map[uint64]*ServerPeer
 
+	messageLog *filelog.FileLog
+	loginLog   *filelog.FileLog
+
 	register   chan *addPeer
 	unregister chan *delPeer
 
 	sendMessage chan sendMessage
-	saveMessage chan saveMessage
 
 	quit chan struct{}
 }
@@ -345,22 +345,31 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	} else {
 		clientCache = newHubClientCache(cfg.Cache.Client, true)
 	}
+	messageLogConfig := &filelog.Config{
+		File: filepath.Join(cfg.Server.CachePath, "message.log"),
+		SubFunc: func(msgs []*bytes.Buffer) error {
+			return saveMessagesToDb(cfg.MessageStore, msgs)
+		},
+	}
+	messageLog, err := filelog.NewFileLog(messageLogConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	hub := &Hub{
-		upgrader:     upgrader,
-		config:       cfg,
-		ServerID:     cfg.Server.ID,
-		clientCache:  clientCache,
-		serverCache:  cfg.Cache.Server,
-		groupCache:   cfg.Cache.Group,
-		messageStore: cfg.MessageStore,
-		clientPeers:  make(map[string]*ClientPeer, 1000),
-		serverPeers:  make(map[uint64]*ServerPeer, 10),
-		register:     make(chan *addPeer, 1),
-		unregister:   make(chan *delPeer, 1),
-		sendMessage:  make(chan sendMessage, 1),
-		saveMessage:  make(chan saveMessage, 1),
-		quit:         make(chan struct{}),
+		upgrader:    upgrader,
+		config:      cfg,
+		ServerID:    cfg.Server.ID,
+		clientCache: clientCache,
+		serverCache: cfg.Cache.Server,
+		groupCache:  cfg.Cache.Group,
+		clientPeers: make(map[string]*ClientPeer, 1000),
+		serverPeers: make(map[uint64]*ServerPeer, 10),
+		register:    make(chan *addPeer, 1),
+		unregister:  make(chan *delPeer, 1),
+		sendMessage: make(chan sendMessage, 1),
+		messageLog:  messageLog,
+		quit:        make(chan struct{}),
 	}
 
 	// regist a service for client
@@ -515,7 +524,6 @@ func (h *Hub) Run() {
 
 	go h.peerHandler()
 	go h.messageHandler()
-	go h.saveMessageHandler()
 	go h.pingHandler()
 
 	// 连接到其它服务器节点,并且对放开放服务
@@ -707,20 +715,48 @@ func (h *Hub) messageHandler() {
 	}
 }
 
-func (h *Hub) saveMessageHandler() {
-	log.Println("start saveMessageHandler")
-	for {
-		select {
-		case msg := <-h.saveMessage:
-			log.Println("save message", msg.msg.From, msg.msg.Text)
-			err := h.messageStore.Save(msg.msg)
-			if err != nil {
-				msg.done <- false
-			} else {
-				msg.done <- true
-			}
+// func (h *Hub) saveMessageHandler() {
+// 	log.Println("start saveMessageHandler")
+// 	for {
+// 		select {
+// 		case msg := <-h.saveMessage:
+// 			log.Println("save message", msg.msg.From, msg.msg.Text)
+// 			err := h.messageStore.Save(msg.msg)
+// 			if err != nil {
+// 				msg.done <- false
+// 			} else {
+// 				msg.done <- true
+// 			}
+// 		}
+// 	}
+// }
+
+func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
+	messages := make([]*database.ChatMsg, 0)
+	for _, buf := range bufs {
+		msg, err := wire.ReadMessage(buf)
+		if err != nil {
+			fmt.Println(err)
+			continue
 		}
+		chatMsg := msg.(*wire.Msgchat)
+		dbmsg := &database.ChatMsg{
+			From:     chatMsg.From,
+			To:       chatMsg.Header().To,
+			Scope:    chatMsg.Header().Scope,
+			Type:     chatMsg.Type,
+			Text:     chatMsg.Text,
+			Extra:    chatMsg.Extra,
+			CreateAt: time.Now(),
+		}
+		messages = append(messages, dbmsg)
 	}
+	err := messageStore.Save(messages...)
+	if err != nil {
+		return err
+	}
+	log.Printf("save messages : %v ", len(messages))
+	return nil
 }
 
 // Close close hub

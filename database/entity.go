@@ -34,7 +34,7 @@ type Server struct {
 
 // ChatMsg 聊消息
 type ChatMsg struct {
-	ID       uint64
+	ID       uint64 `xorm:"pk autoincr 'id'"`
 	From     string
 	Scope    uint8
 	To       string

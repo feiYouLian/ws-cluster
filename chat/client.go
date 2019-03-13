@@ -127,7 +127,7 @@ func sendtoclient(peer *ClientPeer, to string) {
 	<-done
 }
 
-var wshosts = []string{"192.168.0.127:8380", "192.168.0.148:8380"}
+var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
 
 func main() {
 	// listen sys.exit

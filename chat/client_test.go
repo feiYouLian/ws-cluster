@@ -29,7 +29,7 @@ func Test_sendtoclient(t *testing.T) {
 				ackNum++
 				totalNum++
 			case <-ticker.C:
-				log.Printf("1秒内收到ACK消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
+				log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
 				ackNum = 0
 				if totalNum == sendNum {
 					quit <- true
