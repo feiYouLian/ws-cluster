@@ -178,7 +178,7 @@ func (flog *FileLog) writeloop() {
 				flog.appendBlock(block.bytes())
 				block.reset()
 			}
-			log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
+			// log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
 		case <-flog.quit:
 			return
 		}
@@ -204,6 +204,16 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	return nil
 }
 
+func (flog *FileLog) nextBlock() bool {
+	flog.Lock()
+	if flog.readblock == flog.writeblock {
+		flog.Unlock()
+		return false
+	}
+	flog.Unlock()
+	return true
+}
+
 func (flog *FileLog) getBlock() ([]byte, error) {
 	flog.Lock()
 	if flog.readblock == flog.writeblock {
@@ -225,6 +235,10 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 
 func (flog *FileLog) readloop() {
 	for {
+		if !flog.nextBlock() {
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
 		blockbuf, err := flog.getBlock()
 		if err != nil {
 			log.Println(err)
