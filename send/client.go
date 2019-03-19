@@ -24,7 +24,7 @@ const (
 func main() {
 	wg := sync.WaitGroup{}
 
-	for index := 0; index < 500; index++ {
+	for index := 0; index < 10; index++ {
 		go func() {
 			wg.Add(1)
 			defer wg.Done()
