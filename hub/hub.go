@@ -572,10 +572,10 @@ func isMasterServer(servers []database.Server, ID, exID uint64) bool {
 
 // 与其它服务器节点建立长连接
 func (h *Hub) outPeerHandler() error {
+	log.Println("start outPeerhandler")
 	if h.config.Server.Mode == config.ModeSingle {
 		return nil
 	}
-	log.Println("start outPeerhandler")
 	servers, err := h.serverCache.GetServers()
 	if err != nil {
 		return err

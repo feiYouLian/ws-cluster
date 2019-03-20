@@ -20,6 +20,7 @@ import (
 const (
 	secret = "xxx123456"
 )
+const sendurl = "http://192.168.0.127:8380/msg/send"
 
 func main() {
 	wg := sync.WaitGroup{}
@@ -38,10 +39,10 @@ func main() {
 
 			d, _ := json.Marshal(msg)
 			client := &http.Client{
-				Timeout: time.Second * 3,
+				Timeout: time.Second * 5,
 			}
 
-			resp, err := client.Post("http://192.168.0.127:8380/msg/send", "application/json", bytes.NewBuffer(d))
+			resp, err := client.Post(sendurl, "application/json", bytes.NewBuffer(d))
 
 			if err != nil {
 				fmt.Println(err)
