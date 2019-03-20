@@ -25,6 +25,8 @@ func handleInterrupt(hub *hub.Hub, sc chan os.Signal) {
 }
 
 func main() {
+	log.Println("system start up")
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// read config
