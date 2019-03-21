@@ -20,12 +20,12 @@ import (
 const (
 	secret = "xxx123456"
 )
-const sendurl = "http://192.168.0.127:8380/msg/send"
+const sendurl = "http://192.168.0.188:8380/msg/send"
 
 func main() {
 	wg := sync.WaitGroup{}
 
-	for index := 0; index < 10; index++ {
+	for index := 0; index < 100; index++ {
 		go func() {
 			wg.Add(1)
 			defer wg.Done()

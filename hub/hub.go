@@ -2,6 +2,7 @@ package hub
 
 import (
 	"bytes"
+	"container/list"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -56,7 +57,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 		return err
 	}
 	if header.Scope != wire.ScopeNull {
-		p.hub.sendMessage <- sendMessage{from: serverFlag, message: message, header: header}
+		p.hub.msgQueue <- Msg{from: serverFlag, message: message}
 	}
 	return nil
 }
@@ -141,8 +142,6 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 
 	// 处理消息逻辑
 	switch header.Msgtype {
-	case wire.MsgTypeChat:
-		p.hub.messageLog.Write(message)
 	case wire.MsgTypeGroupInOut:
 		msg, err := wire.ReadMessage(bytes.NewReader(message))
 		msgGroup := msg.(*wire.MsgGroupInOut)
@@ -165,7 +164,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
 		log.Println("message forward to hub", header)
 		// 消息转发
-		p.hub.sendMessage <- sendMessage{from: clientFlag, message: message, header: header}
+		p.hub.msgQueue <- Msg{from: clientFlag, message: message}
 	}
 
 	// message ack
@@ -173,26 +172,6 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	p.PushMessage(ackmsg, nil)
 	return nil
 }
-
-// func (p *ClientPeer) saveMessage(chatMsg *wire.Msgchat) error {
-// 	done := make(chan bool)
-// 	chatmsg := &database.ChatMsg{
-// 		From:     p.entity.ID,
-// 		To:       chatMsg.Header().To,
-// 		Scope:    chatMsg.Header().Scope,
-// 		Type:     chatMsg.Type,
-// 		Text:     chatMsg.Text,
-// 		CreateAt: time.Now(),
-// 	}
-// 	p.hub.saveMessage <- saveMessage{chatmsg, done}
-// 	// wait
-// 	saved := <-done
-// 	if !saved {
-// 		return fmt.Errorf("message saved failed")
-// 	}
-
-// 	return nil
-// }
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
@@ -273,9 +252,9 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 	return clientPeer, nil
 }
 
-type sendMessage struct {
+// Msg to hub
+type Msg struct {
 	from    byte
-	header  *wire.MessageHeader
 	message []byte
 }
 
@@ -315,9 +294,10 @@ type Hub struct {
 	register   chan *addPeer
 	unregister chan *delPeer
 
-	sendMessage chan sendMessage
-
-	quit chan struct{}
+	msgRelay  chan Msg
+	msgQueue  chan Msg
+	relayDone chan struct{}
+	quit      chan struct{}
 }
 
 // NewHub 创建一个 Server 对象，并初始化
@@ -367,8 +347,10 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		serverPeers: make(map[uint64]*ServerPeer, 10),
 		register:    make(chan *addPeer, 1),
 		unregister:  make(chan *delPeer, 1),
-		sendMessage: make(chan sendMessage, 1),
+		msgQueue:    make(chan Msg, 1),
+		msgRelay:    make(chan Msg, 1),
 		messageLog:  messageLog,
+		relayDone:   make(chan struct{}),
 		quit:        make(chan struct{}),
 	}
 
@@ -508,7 +490,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, err.Error())
 		return
 	}
-	hub.sendMessage <- sendMessage{from: clientFlag, header: header, message: buf.Bytes()}
+	hub.msgQueue <- Msg{from: clientFlag, message: buf.Bytes()}
 	fmt.Fprint(w, "ok")
 }
 
@@ -524,6 +506,7 @@ func (h *Hub) Run() {
 
 	go h.peerHandler()
 	go h.messageHandler()
+	go h.messageQueueHandler()
 	go h.pingHandler()
 
 	// 连接到其它服务器节点,并且对放开放服务
@@ -557,6 +540,7 @@ func (h *Hub) pingHandler() error {
 		}
 	}
 }
+
 func isMasterServer(servers []database.Server, ID, exID uint64) bool {
 	isMaster := true
 	for _, s := range servers {
@@ -664,16 +648,57 @@ func (h *Hub) peerHandler() {
 	}
 }
 
-// 处理消息转发
+// 处理消息queue
+func (h *Hub) messageQueueHandler() {
+	log.Println("start messageQueueHandler")
+	pendingMsgs := list.New()
+
+	// We keep the waiting flag so that we know if we have a pending message
+	waiting := false
+
+	// To avoid duplication below.
+	queuePacket := func(msg Msg, list *list.List, waiting bool) bool {
+		if !waiting {
+			h.msgRelay <- msg
+		} else {
+			list.PushBack(msg)
+		}
+		// we are always waiting now.
+		return true
+	}
+
+	for {
+		select {
+		case msg, _ := <-h.msgQueue:
+			// save message
+			h.messageLog.Write(msg.message)
+
+			waiting = queuePacket(msg, pendingMsgs, waiting)
+		case <-h.relayDone:
+			next := pendingMsgs.Front()
+			if next == nil {
+				waiting = false
+				continue
+			}
+
+			// Notify the handleWirte about the next item to
+			// asynchronously send.
+			val := pendingMsgs.Remove(next)
+			h.msgRelay <- val.(Msg)
+		}
+	}
+}
+
 func (h *Hub) messageHandler() {
 	log.Println("start messageHandler")
 	for {
 		select {
-		case msg := <-h.sendMessage:
-			header := msg.header
-			if header == nil {
-				return
+		case msg := <-h.msgRelay:
+			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
+			if err != nil {
+				continue
 			}
+
 			if header.Scope == wire.ScopeClient {
 				to := header.To
 				// 在当前服务器节点中找到了目标客户端
@@ -714,22 +739,6 @@ func (h *Hub) messageHandler() {
 		}
 	}
 }
-
-// func (h *Hub) saveMessageHandler() {
-// 	log.Println("start saveMessageHandler")
-// 	for {
-// 		select {
-// 		case msg := <-h.saveMessage:
-// 			log.Println("save message", msg.msg.From, msg.msg.Text)
-// 			err := h.messageStore.Save(msg.msg)
-// 			if err != nil {
-// 				msg.done <- false
-// 			} else {
-// 				msg.done <- true
-// 			}
-// 		}
-// 	}
-// }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
 	messages := make([]*database.ChatMsg, 0)
