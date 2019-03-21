@@ -349,8 +349,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		unregister:  make(chan *delPeer, 1),
 		msgQueue:    make(chan Msg, 1),
 		msgRelay:    make(chan Msg, 1),
+		relayDone:   make(chan struct{}, 1),
 		messageLog:  messageLog,
-		relayDone:   make(chan struct{}),
 		quit:        make(chan struct{}),
 	}
 
@@ -696,6 +696,7 @@ func (h *Hub) messageHandler() {
 		case msg := <-h.msgRelay:
 			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
 			if err != nil {
+				h.relayDone <- struct{}{}
 				continue
 			}
 
@@ -704,6 +705,7 @@ func (h *Hub) messageHandler() {
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers[to]; ok {
 					client.PushMessage(msg.message, nil)
+					h.relayDone <- struct{}{}
 					continue
 				}
 
@@ -736,6 +738,8 @@ func (h *Hub) messageHandler() {
 					}
 				}
 			}
+
+			h.relayDone <- struct{}{}
 		}
 	}
 }

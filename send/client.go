@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,8 +26,12 @@ const sendurl = "http://192.168.0.188:8380/msg/send"
 
 func main() {
 	wg := sync.WaitGroup{}
+	var num = 1
+	if len(os.Args) >= 2 {
+		num, _ = strconv.Atoi(os.Args[1])
+	}
 
-	for index := 0; index < 100; index++ {
+	for index := 0; index < num; index++ {
 		go func() {
 			wg.Add(1)
 			defer wg.Done()
