@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 	"testing"
 	"time"
 )
@@ -21,15 +22,17 @@ func TestNewFileLog(t *testing.T) {
 	quit := make(chan bool)
 	msgCount := 50000
 	recv := 0
+	tempfile := fmt.Sprintf("./%v.log", "test")
+	// tempfile := fmt.Sprintf("./%v.log", time.Now().Unix())
 	filelog, err := NewFileLog(&Config{
-		File: "./msg.log",
+		File: tempfile,
 		SubFunc: func(logs []*bytes.Buffer) error {
 			recv += len(logs)
 			log.Println("recv:", recv)
 			if recv == msgCount {
 				quit <- true
 			}
-			time.Sleep(time.Millisecond * 100)
+			time.Sleep(time.Millisecond * 10)
 			return nil
 		},
 	})
@@ -48,7 +51,10 @@ func TestNewFileLog(t *testing.T) {
 	}()
 
 	<-quit
-
-	// time.Sleep(time.Second * 5)
-
+	// os.Remove(tempfile)
+	// time.Sleep(time.Second * 1)
+	// bbs, _ := ioutil.ReadFile(tempfile)
+	// log.Println(bbs)
+	lfile, _ := os.Open(tempfile)
+	log.Println(readUint32(lfile, 0), readUint32(lfile, 4))
 }

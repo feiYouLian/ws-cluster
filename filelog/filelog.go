@@ -24,18 +24,26 @@ var (
 	errBlockLackOfSpace = errors.New("Lack of space")
 	errBlockEmpty       = errors.New("block empty")
 	errNoMoreBlock      = errors.New("no more block")
+	errBlockWriteOnly   = errors.New("block is write only")
+	errBlockReadOnly    = errors.New("block is read only")
+)
+
+const (
+	blockModeRead  = uint8(1)
+	blockModeWrite = uint8(2)
 )
 
 // Block log Block
 type Block struct {
-	buf    []byte
-	offset uint16
-	cap    uint16
+	buf    []byte //block 数据
+	offset uint16 // 读/写 偏移
+	cap    uint16 // 容量
 	length uint16 //record count
+	mode   uint8  // 1:read 2:write
 }
 
 // block 一个 blocke只能读或者写
-func newBlock(b []byte) *Block {
+func newBlock(b []byte, mode uint8) *Block {
 	if b == nil || len(b) == 0 {
 		return nil
 	}
@@ -47,6 +55,7 @@ func newBlock(b []byte) *Block {
 		offset: 2,
 		cap:    cap,
 		length: length,
+		mode:   mode,
 	}
 }
 
@@ -62,6 +71,9 @@ func (block *Block) readUint16(offset uint16) uint16 {
 }
 
 func (block *Block) write(b []byte) error {
+	if block.mode != blockModeWrite {
+		return errBlockWriteOnly
+	}
 	blen := uint16(len(b))
 	if block.cap-block.offset < blen+4 {
 		return errBlockLackOfSpace
@@ -78,6 +90,9 @@ func (block *Block) write(b []byte) error {
 }
 
 func (block *Block) read() ([]byte, error) {
+	if block.mode != blockModeRead {
+		return nil, errBlockReadOnly
+	}
 	if block.offset >= block.cap || block.length == 0 {
 		return nil, errBlockEmpty
 	}
@@ -159,13 +174,16 @@ func (flog *FileLog) Write(log []byte) {
 func (flog *FileLog) writeloop() {
 	t := time.NewTicker(time.Second)
 	defer flog.file.Close()
-	block := newBlock(make([]byte, blockSize))
+	block := newBlock(make([]byte, blockSize), blockModeWrite)
 	for {
 		select {
 		case wlog := <-flog.writelog:
 			if !block.hasSpace(uint16(len(wlog) + 2)) {
 				log.Println("append block to file, logs ", block.length)
-				flog.appendBlock(block.bytes())
+				err := flog.appendBlock(block.bytes())
+				if err != nil {
+					log.Println(err)
+				}
 				block.reset()
 			}
 			err := block.write(wlog)
@@ -175,10 +193,13 @@ func (flog *FileLog) writeloop() {
 		case <-t.C:
 			if block.length > 0 {
 				log.Println("append block to file, logs ", block.length)
-				flog.appendBlock(block.bytes())
+				err := flog.appendBlock(block.bytes())
+				if err != nil {
+					log.Println(err)
+				}
 				block.reset()
 			}
-			// log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
+			log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
 		case <-flog.quit:
 			return
 		}
@@ -187,19 +208,20 @@ func (flog *FileLog) writeloop() {
 
 func (flog *FileLog) appendBlock(b []byte) error {
 	flog.Lock()
+	// 文件头8字节用于记录读写偏移量
 	offset := flog.writeblock*blockSize + 8
 
 	_, err := flog.file.WriteAt(b, int64(offset))
 	if err != nil {
+		flog.Unlock()
 		return err
 	}
 	flog.writeblock++
 	err = writeUint32(flog.file, uint32(flog.writeblock), 4)
+	flog.Unlock()
 	if err != nil {
-		flog.Unlock()
 		return err
 	}
-	flog.Unlock()
 	// flog.file.Sync()
 	return nil
 }
@@ -220,37 +242,50 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 		flog.Unlock()
 		return nil, errNoMoreBlock
 	}
+	// 从文件中读取一个块
 	offset := flog.readblock*blockSize + 8
 	buf := make([]byte, blockSize)
-	_, err := flog.file.ReadAt(buf, int64(offset))
+	flog.file.ReadAt(buf, int64(offset))
+
+	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
+	flog.readblock++
+	if flog.readblock == flog.writeblock {
+		flog.readblock = 0
+		flog.writeblock = 0
+		writeUint32(flog.file, 0, 4)
+
+		flog.file.Truncate(8)
+		log.Println("filelog truncate to 8 bytes")
+	}
+	writeUint32(flog.file, uint32(flog.readblock), 0)
 	flog.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	if buf[0] == 0 {
-		return nil, errNoMoreBlock
-	}
+
 	return buf, nil
 }
 
 func (flog *FileLog) readloop() {
 	for {
 		if !flog.nextBlock() {
-			time.Sleep(time.Millisecond * 100)
+			time.Sleep(time.Millisecond * 300)
 			continue
 		}
 		blockbuf, err := flog.getBlock()
 		if err != nil {
-			time.Sleep(time.Millisecond * 100)
+			log.Println(err)
+			time.Sleep(time.Millisecond * 300)
 			continue
 		}
-		block := newBlock(blockbuf)
+		block := newBlock(blockbuf, blockModeRead)
 
 		blockLength := block.length
 		list := make([]*bytes.Buffer, blockLength)
 
 		for i := uint16(0); i < blockLength; i++ {
-			buf, _ := block.read()
+			buf, err := block.read()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
 			list[i] = bytes.NewBuffer(buf)
 		}
 		if err := flog.sub(list); err != nil {
@@ -258,18 +293,6 @@ func (flog *FileLog) readloop() {
 			time.Sleep(time.Second)
 			continue
 		}
-
-		flog.Lock()
-		flog.readblock++
-		if flog.readblock == flog.writeblock {
-			flog.readblock = 0
-			flog.writeblock = 0
-			writeUint32(flog.file, 0, 4)
-
-			flog.file.Truncate(8)
-		}
-		writeUint32(flog.file, uint32(flog.readblock), 0)
-		flog.Unlock()
 	}
 }
 
