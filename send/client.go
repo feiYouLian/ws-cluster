@@ -22,7 +22,8 @@ import (
 const (
 	secret = "xxx123456"
 )
-const sendurl = "http://192.168.0.188:8380/msg/send"
+
+const sendurl = "http://192.168.0.127:8380/msg/send"
 
 func main() {
 	wg := sync.WaitGroup{}
@@ -32,9 +33,8 @@ func main() {
 	}
 
 	for index := 0; index < num; index++ {
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
-			defer wg.Done()
 			msg := database.ChatMsg{
 				From:  "sys",
 				Scope: wire.ScopeGroup,
@@ -52,9 +52,11 @@ func main() {
 
 			if err != nil {
 				fmt.Println(err)
+				wg.Done()
 				return
 			}
 			fmt.Println(resp.Status)
+			wg.Done()
 		}()
 	}
 

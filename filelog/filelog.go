@@ -241,7 +241,6 @@ func (flog *FileLog) readloop() {
 		}
 		blockbuf, err := flog.getBlock()
 		if err != nil {
-			log.Println(err)
 			time.Sleep(time.Millisecond * 100)
 			continue
 		}
