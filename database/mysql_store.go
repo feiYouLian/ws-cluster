@@ -39,12 +39,9 @@ func (s *MysqMessageStore) Save(chatMsgs ...*ChatMsg) error {
 	if s.engine == nil {
 		return nil
 	}
-	aff, err := s.engine.Insert(chatMsgs)
+	_, err := s.engine.Insert(chatMsgs)
 	if err != nil {
 		return err
-	}
-	if aff == 0 {
-		return ErrInsertFail
 	}
 	return nil
 }

@@ -40,7 +40,7 @@ func main() {
 				Scope: wire.ScopeGroup,
 				To:    "fb_bet_now_notify",
 				Type:  1,
-				Text:  "1276099",
+				Text:  "1384201",
 			}
 
 			d, _ := json.Marshal(msg)

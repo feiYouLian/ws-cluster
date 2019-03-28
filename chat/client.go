@@ -174,6 +174,7 @@ func main() {
 			} else {
 				addpeer <- peer
 			}
+
 			ws.Done()
 		}(index)
 	}
