@@ -199,7 +199,7 @@ func (flog *FileLog) writeloop() {
 				}
 				block.reset()
 			}
-			log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
+			// log.Println(readUint32(flog.file, 0), readUint32(flog.file, 4))
 		case <-flog.quit:
 			return
 		}
