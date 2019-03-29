@@ -2,6 +2,7 @@ FROM golang:latest
 
 WORKDIR /data
 COPY . $GOPATH/src/github.com/ws-cluster/
+COPY ./conf.ini /data/conf.ini
 RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 # RUN go get -u github.com/golang/dep/cmd/dep
 # RUN dep ensure
