@@ -245,8 +245,10 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	// 从文件中读取一个块
 	offset := flog.readblock*blockSize + 8
 	buf := make([]byte, blockSize)
-	flog.file.ReadAt(buf, int64(offset))
-
+	_, err := flog.file.ReadAt(buf, int64(offset))
+	if err != nil {
+		return nil, err
+	}
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
 	if flog.readblock == flog.writeblock {
