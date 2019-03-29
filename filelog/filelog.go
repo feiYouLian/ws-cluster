@@ -222,7 +222,7 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	if err != nil {
 		return err
 	}
-	// flog.file.Sync()
+	flog.file.Sync()
 	return nil
 }
 
@@ -259,7 +259,7 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	}
 	writeUint32(flog.file, uint32(flog.readblock), 0)
 	flog.Unlock()
-
+	flog.file.Sync()
 	return buf, nil
 }
 
