@@ -261,19 +261,21 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	}
 	fmt.Println(buf)
 
+	bs, _ := ioutil.ReadFile(flog.file.Name())
+	fmt.Println(bs)
+
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
 	if flog.readblock == flog.writeblock {
 		flog.readblock = 0
 		flog.writeblock = 0
-		writeUint32(flog.file, 0, 4)
+		// writeUint32(flog.file, 0, 4)
 
 		flog.file.Truncate(8)
 		log.Println("filelog truncate to 8 bytes")
 	}
-	writeUint32(flog.file, uint32(flog.readblock), 0)
+	// writeUint32(flog.file, uint32(flog.readblock), 0)
 	flog.Unlock()
-	flog.file.Sync()
 	return buf, nil
 }
 
