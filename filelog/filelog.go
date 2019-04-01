@@ -223,7 +223,7 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	err = writeUint32(flog.file, uint32(flog.writeblock), 4)
 
 	buf2 := make([]byte, 16)
-	_, err = flog.file.Read(buf2)
+	_, err = flog.file.ReadAt(buf2, 0)
 	if err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	fmt.Println(buf)
 
 	buf2 := make([]byte, 16)
-	_, err = flog.file.Read(buf2)
+	_, err = flog.file.ReadAt(buf2, 0)
 	if err != nil {
 		return nil, err
 	}
