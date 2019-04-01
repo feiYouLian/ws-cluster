@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"sync"
@@ -152,6 +153,8 @@ func NewFileLog(config *Config) (*FileLog, error) {
 	if err != nil {
 		return nil, err
 	}
+	writeUint32(f, 0, 0)
+	writeUint32(f, 0, 4)
 
 	fl := &FileLog{
 		file:       f,
@@ -225,7 +228,9 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	if err != nil {
 		return err
 	}
-	flog.file.Sync()
+	bs, _ := ioutil.ReadFile(flog.file.Name())
+	fmt.Println(bs)
+
 	return nil
 }
 
