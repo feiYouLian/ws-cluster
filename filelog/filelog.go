@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"sync"
@@ -153,8 +151,6 @@ func NewFileLog(config *Config) (*FileLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	writeUint32(f, 0, 0)
-	writeUint32(f, 0, 4)
 
 	fl := &FileLog{
 		file:       f,
@@ -214,22 +210,20 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	flog.Lock()
 	// 文件头8字节用于记录读写偏移量
 	offset := flog.writeblock*blockSize + 8
-	fmt.Println("write file offese", offset)
-	fmt.Println(b)
 	_, err := flog.file.WriteAt(b, int64(offset))
 	if err != nil {
 		flog.Unlock()
 		return err
 	}
 	flog.writeblock++
-	// err = writeUint32(flog.file, uint32(flog.writeblock), 4)
+	err = writeUint32(flog.file, uint32(flog.writeblock), 4)
 
 	flog.Unlock()
 	if err != nil {
 		return err
 	}
-	bs, _ := ioutil.ReadFile(flog.file.Name())
-	fmt.Println(bs)
+	// bs, _ := ioutil.ReadFile(flog.file.Name())
+	// fmt.Println(bs)
 
 	return nil
 }
@@ -252,29 +246,24 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	}
 	// 从文件中读取一个块
 	offset := flog.readblock*blockSize + 8
-	fmt.Println("read file offese", offset)
 
 	buf := make([]byte, blockSize)
 	_, err := flog.file.ReadAt(buf, int64(offset))
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(buf)
-
-	bs, _ := ioutil.ReadFile(flog.file.Name())
-	fmt.Println(bs)
 
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
 	if flog.readblock == flog.writeblock {
 		flog.readblock = 0
 		flog.writeblock = 0
-		// writeUint32(flog.file, 0, 4)
+		writeUint32(flog.file, 0, 4)
 
 		flog.file.Truncate(8)
 		log.Println("filelog truncate to 8 bytes")
 	}
-	// writeUint32(flog.file, uint32(flog.readblock), 0)
+	writeUint32(flog.file, uint32(flog.readblock), 0)
 	flog.Unlock()
 	return buf, nil
 }
