@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -11,7 +12,8 @@ import (
 )
 
 const (
-	blockSize = 4 * 1024
+	blockSize = 1024
+	// blockSize = 4 * 1024
 )
 
 var (
@@ -277,6 +279,7 @@ func (flog *FileLog) readloop() {
 			time.Sleep(time.Millisecond * 300)
 			continue
 		}
+		fmt.Println(blockbuf)
 		block := newBlock(blockbuf, blockModeRead)
 
 		blockLength := block.length
