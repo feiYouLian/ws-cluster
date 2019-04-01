@@ -77,7 +77,7 @@ func (block *Block) write(b []byte) error {
 		return errBlockWriteOnly
 	}
 	blen := uint16(len(b))
-	if block.cap-block.offset < blen+4 {
+	if block.cap-block.offset < blen+2 {
 		return errBlockLackOfSpace
 	}
 	block.writeUint16(blen, block.offset)
@@ -87,7 +87,6 @@ func (block *Block) write(b []byte) error {
 	block.offset += blen
 	block.length++
 	block.writeUint16(block.length, 0)
-
 	return nil
 }
 
@@ -212,7 +211,7 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	flog.Lock()
 	// 文件头8字节用于记录读写偏移量
 	offset := flog.writeblock*blockSize + 8
-
+	fmt.Println("write file offese", offset)
 	_, err := flog.file.WriteAt(b, int64(offset))
 	if err != nil {
 		flog.Unlock()
@@ -246,11 +245,15 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	}
 	// 从文件中读取一个块
 	offset := flog.readblock*blockSize + 8
+	fmt.Println("read file offese", offset)
+
 	buf := make([]byte, blockSize)
 	_, err := flog.file.ReadAt(buf, int64(offset))
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(buf)
+
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
 	if flog.readblock == flog.writeblock {
@@ -279,7 +282,7 @@ func (flog *FileLog) readloop() {
 			time.Sleep(time.Millisecond * 300)
 			continue
 		}
-		fmt.Println(blockbuf)
+
 		block := newBlock(blockbuf, blockModeRead)
 
 		blockLength := block.length
