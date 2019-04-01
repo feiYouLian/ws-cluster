@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -324,6 +325,13 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		clientCache = newHubClientCache(cfg.Cache.Client, false)
 	} else {
 		clientCache = newHubClientCache(cfg.Cache.Client, true)
+	}
+	if _, err := os.Stat(cfg.Server.CachePath); err != nil {
+		err = os.MkdirAll(cfg.Server.CachePath, os.ModePerm)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
 	}
 	messageLogConfig := &filelog.Config{
 		File: filepath.Join(cfg.Server.CachePath, "message.log"),
