@@ -212,6 +212,8 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	// 文件头8字节用于记录读写偏移量
 	offset := flog.writeblock*blockSize + 8
 	fmt.Println("write file offese", offset)
+	fmt.Println(b)
+	fmt.Println("-----------")
 	_, err := flog.file.WriteAt(b, int64(offset))
 	if err != nil {
 		flog.Unlock()
