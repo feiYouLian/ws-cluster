@@ -14,14 +14,16 @@ import (
 )
 
 const (
-	defaultConfigName = "conf.ini"
-	defaultIDName     = "id.lock"
+	defaultConfigName  = "conf.ini"
+	defaultIDName      = "id.lock"
+	defaultMessageName = "message.log"
 )
 
 var (
-	defaultDir          = "./"
-	defaultConfigFile   = filepath.Join(defaultDir, defaultConfigName)
-	defaultIDConfigFile = filepath.Join(defaultDir, defaultIDName)
+	configDir           = "./"
+	dataDir             = "./data"
+	defaultConfigFile   = filepath.Join(configDir, defaultConfigName)
+	defaultIDConfigFile = filepath.Join(dataDir, defaultIDName)
 )
 
 const (
@@ -33,13 +35,13 @@ const (
 
 // ServerConfig ServerConfig
 type ServerConfig struct {
-	ID        uint64 `description:"server id"`
-	Addr      string
-	Listen    int
-	Secret    string
-	Origin    string
-	Mode      int
-	CachePath string
+	ID          uint64 `description:"server id"`
+	Addr        string
+	Listen      int
+	Secret      string
+	Origin      string
+	Mode        int
+	MessageFile string
 }
 
 // RedisConfig redis config
@@ -97,6 +99,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	config.Server.MessageFile = filepath.Join(dataDir, defaultMessageName)
 
 	section = cfg.Section("redis")
 	config.Redis = RedisConfig{}
@@ -117,6 +120,16 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// datadir
+	if _, err := os.Stat(dataDir); err != nil {
+		err = os.MkdirAll(dataDir, os.ModePerm)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+	}
+
 	return &config, nil
 }
 

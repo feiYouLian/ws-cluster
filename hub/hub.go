@@ -11,8 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -326,15 +324,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	} else {
 		clientCache = newHubClientCache(cfg.Cache.Client, true)
 	}
-	if _, err := os.Stat(cfg.Server.CachePath); err != nil {
-		err = os.MkdirAll(cfg.Server.CachePath, os.ModePerm)
-		if err != nil {
-			fmt.Println(err)
-			return nil, err
-		}
-	}
 	messageLogConfig := &filelog.Config{
-		File: filepath.Join(cfg.Server.CachePath, "message.log"),
+		File: cfg.Server.MessageFile,
 		SubFunc: func(msgs []*bytes.Buffer) error {
 			return saveMessagesToDb(cfg.MessageStore, msgs)
 		},

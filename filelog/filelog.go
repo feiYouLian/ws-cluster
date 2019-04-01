@@ -213,7 +213,6 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	offset := flog.writeblock*blockSize + 8
 	fmt.Println("write file offese", offset)
 	fmt.Println(b)
-	fmt.Println("-----------")
 	_, err := flog.file.WriteAt(b, int64(offset))
 	if err != nil {
 		flog.Unlock()
@@ -221,13 +220,6 @@ func (flog *FileLog) appendBlock(b []byte) error {
 	}
 	flog.writeblock++
 	err = writeUint32(flog.file, uint32(flog.writeblock), 4)
-
-	buf2 := make([]byte, 16)
-	_, err = flog.file.ReadAt(buf2, 0)
-	if err != nil {
-		return err
-	}
-	fmt.Println(buf2)
 
 	flog.Unlock()
 	if err != nil {
@@ -263,13 +255,6 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 		return nil, err
 	}
 	fmt.Println(buf)
-
-	buf2 := make([]byte, 16)
-	_, err = flog.file.ReadAt(buf2, 0)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(buf2)
 
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
