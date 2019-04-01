@@ -147,6 +147,7 @@ type Config struct {
 
 // NewFileLog 根据文件路径创建一个 FileLog
 func NewFileLog(config *Config) (*FileLog, error) {
+	// 此处不能设置为 os.O_APPEND 模式，否则在 docker offset 失效
 	f, err := os.OpenFile(config.File, os.O_CREATE|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		return nil, err
