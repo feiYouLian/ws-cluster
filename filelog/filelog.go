@@ -149,7 +149,7 @@ type Config struct {
 
 // NewFileLog 根据文件路径创建一个 FileLog
 func NewFileLog(config *Config) (*FileLog, error) {
-	f, err := os.OpenFile(config.File, os.O_APPEND|os.O_CREATE|os.O_RDWR, os.ModePerm)
+	f, err := os.OpenFile(config.File, os.O_CREATE|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
