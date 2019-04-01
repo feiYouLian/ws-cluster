@@ -222,7 +222,7 @@ func (flog *FileLog) appendBlock(b []byte) error {
 		return err
 	}
 	flog.writeblock++
-	err = writeUint32(flog.file, uint32(flog.writeblock), 4)
+	// err = writeUint32(flog.file, uint32(flog.writeblock), 4)
 
 	flog.Unlock()
 	if err != nil {
