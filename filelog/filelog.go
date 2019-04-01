@@ -256,9 +256,12 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 	}
 	fmt.Println(buf)
 
-	buf = make([]byte, 16)
-	flog.file.ReadAt(buf, 0)
-	fmt.Println(buf)
+	buf2 := make([]byte, 16)
+	_, err = flog.file.Read(buf2)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(buf2)
 
 	// 读取之后无论处理是否成功不再重读，否则可能因为处理失败卡死在某个 block 中
 	flog.readblock++
