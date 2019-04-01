@@ -10,4 +10,4 @@ RUN go build -o /data/ws-cluster $GOPATH/src/github.com/ws-cluster/
 RUN ls
 EXPOSE 8380
 
-ENTRYPOINT ["./ws-cluster"]
+ENTRYPOINT ["./data/ws-cluster"]
