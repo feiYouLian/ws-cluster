@@ -606,12 +606,17 @@ func (h *Hub) peerHandler() {
 				peer := p.peer.(*ClientPeer)
 				if p, ok := h.clientPeers[peer.entity.ID]; ok {
 					// 如果节点已经登陆，就把前一个 peer踢下线
-					p.Close()
+					buf, _ := wire.MakeKillMessage(0, p.entity.ID)
+					fmt.Printf("kill client:%v \n", p.entity.ID)
+					p.PushMessage(buf, nil)
 				} else {
 					client, err := h.clientCache.GetClient(peer.entity.ID)
 					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
 					if err == nil && client != nil {
-
+						buf, _ := wire.MakeKillMessage(0, peer.entity.ID)
+						if server, ok := h.serverPeers[client.ServerID]; ok {
+							server.PushMessage(buf, nil)
+						}
 					}
 				}
 				h.clientPeers[peer.entity.ID] = peer

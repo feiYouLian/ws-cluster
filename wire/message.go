@@ -13,6 +13,8 @@ const (
 	MsgTypeChat = uint8(3)
 	// MsgTypeGroupInOut join or leave group
 	MsgTypeGroupInOut = uint8(5)
+	// MsgTypeKill kill a client
+	MsgTypeKill = uint8(7)
 )
 
 const (
@@ -119,6 +121,8 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 		msg = &MsgAck{header: header}
 	case MsgTypeGroupInOut:
 		msg = &MsgGroupInOut{header: header}
+	case MsgTypeKill:
+		msg = &MsgKill{header: header}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", header.Msgtype)
 	}
@@ -135,6 +139,18 @@ func MakeAckMessage(id uint32, state uint8) ([]byte, error) {
 
 	buf := &bytes.Buffer{}
 	err := WriteMessage(buf, msgAck)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// MakeKillMessage kill to
+func MakeKillMessage(id uint32, client string) ([]byte, error) {
+	header := &MessageHeader{ID: id, Msgtype: MsgTypeKill, Scope: ScopeClient, To: client}
+	message, _ := MakeEmptyMessage(header)
+	buf := &bytes.Buffer{}
+	err := WriteMessage(buf, message)
 	if err != nil {
 		return nil, err
 	}
