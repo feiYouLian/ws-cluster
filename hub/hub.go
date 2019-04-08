@@ -720,8 +720,9 @@ func (h *Hub) messageHandler() {
 					if server, ok := h.serverPeers[client.ServerID]; ok {
 						server.PushMessage(msg.message, nil)
 					}
+					continue
 				}
-
+				log.Println("message lost,client is offline:", to)
 			} else if header.Scope == wire.ScopeGroup {
 				group := header.To
 				// 如果消息是直接来源于 client。就转发到其它服务器
