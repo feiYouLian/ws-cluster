@@ -698,11 +698,14 @@ func (h *Hub) messageHandler() {
 	for {
 		select {
 		case msg := <-h.msgRelay:
+
 			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
 			if err != nil {
+				fmt.Println(err)
 				h.relayDone <- struct{}{}
 				continue
 			}
+			log.Println("messagehandler receve a message to ", header.To)
 
 			if header.Scope == wire.ScopeClient {
 				to := header.To
@@ -720,6 +723,7 @@ func (h *Hub) messageHandler() {
 					if server, ok := h.serverPeers[client.ServerID]; ok {
 						server.PushMessage(msg.message, nil)
 					}
+					h.relayDone <- struct{}{}
 					continue
 				}
 				log.Println("message lost,client is offline:", to)
