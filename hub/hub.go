@@ -679,6 +679,7 @@ func (h *Hub) messageQueueHandler() {
 
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-h.relayDone:
+			log.Println("relayDone")
 			next := pendingMsgs.Front()
 			if next == nil {
 				waiting = false
