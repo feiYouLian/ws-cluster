@@ -180,7 +180,7 @@ func (flog *FileLog) writeloop() {
 		select {
 		case wlog := <-flog.writelog:
 			if !block.hasSpace(uint16(len(wlog) + 2)) {
-				log.Println("append block to file, logs ", block.length)
+				// log.Println("append block to file, logs ", block.length)
 				err := flog.appendBlock(block.bytes())
 				if err != nil {
 					log.Println(err)
@@ -193,7 +193,7 @@ func (flog *FileLog) writeloop() {
 			}
 		case <-t.C:
 			if block.length > 0 {
-				log.Println("append block to file, logs ", block.length)
+				// log.Println("append block to file, logs ", block.length)
 				err := flog.appendBlock(block.bytes())
 				if err != nil {
 					log.Println(err)
@@ -262,7 +262,7 @@ func (flog *FileLog) getBlock() ([]byte, error) {
 		writeUint32(flog.file, 0, 4)
 
 		flog.file.Truncate(8)
-		log.Println("filelog truncate to 8 bytes")
+		// log.Println("filelog truncate to 8 bytes")
 	}
 	writeUint32(flog.file, uint32(flog.readblock), 0)
 	flog.Unlock()

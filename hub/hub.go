@@ -458,14 +458,12 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理 http 过来的消息发送
 func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	fmt.Println("httpSendMsg from ", r.RemoteAddr)
-
 	var body database.ChatMsg
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	fmt.Println("httpSendMsg ", body)
+	fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
 
 	header := &wire.MessageHeader{
 		ID:      uint32(time.Now().Unix()),
@@ -673,7 +671,7 @@ func (h *Hub) messageQueueHandler() {
 
 	for {
 		select {
-		case msg, _ := <-h.msgQueue:
+		case msg := <-h.msgQueue:
 			// save message
 			h.messageLog.Write(msg.message)
 
@@ -719,7 +717,13 @@ func (h *Hub) messageHandler() {
 
 				// 读取目标client所在的服务器
 				client, err := h.clientCache.GetClient(to)
-				if err == nil && client != nil {
+				if err != nil {
+					fmt.Println(err)
+					h.relayDone <- struct{}{}
+					continue
+				}
+
+				if client != nil {
 					// 消息转发过去
 					if server, ok := h.serverPeers[client.ServerID]; ok {
 						server.PushMessage(msg.message, nil)
@@ -737,7 +741,12 @@ func (h *Hub) messageHandler() {
 					}
 				}
 				// 读取群用户列表。转发
-				clients, _ := h.groupCache.GetGroupMembers(group)
+				clients, err := h.groupCache.GetGroupMembers(group)
+				if err != nil {
+					fmt.Println(err)
+					h.relayDone <- struct{}{}
+					continue
+				}
 				log.Println("group message to clients:", clients)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
