@@ -747,6 +747,10 @@ func (h *Hub) messageHandler() {
 					h.relayDone <- struct{}{}
 					continue
 				}
+				if len(clients) == 0 {
+					h.relayDone <- struct{}{}
+					continue
+				}
 				log.Println("group message to clients:", clients)
 				for _, clientID := range clients {
 					if client, ok := h.clientPeers[clientID]; ok {
