@@ -293,10 +293,9 @@ type Hub struct {
 	register   chan *addPeer
 	unregister chan *delPeer
 
-	msgRelay  chan Msg
-	msgQueue  chan Msg
-	relayDone chan struct{}
-	quit      chan struct{}
+	msgRelay chan Msg
+	msgQueue chan Msg
+	quit     chan struct{}
 }
 
 // NewHub 创建一个 Server 对象，并初始化
@@ -346,9 +345,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		serverPeers: make(map[uint64]*ServerPeer, 10),
 		register:    make(chan *addPeer, 1),
 		unregister:  make(chan *delPeer, 1),
-		msgQueue:    make(chan Msg, 1),
+		msgQueue:    make(chan Msg, 100),
 		msgRelay:    make(chan Msg, 1),
-		relayDone:   make(chan struct{}, 1),
 		messageLog:  messageLog,
 		quit:        make(chan struct{}),
 	}
@@ -654,49 +652,27 @@ func (h *Hub) peerHandler() {
 func (h *Hub) messageQueueHandler() {
 	log.Println("start messageQueueHandler")
 	pendingMsgs := list.New()
-	ticker := time.NewTicker(time.Second)
-
-	// We keep the waiting flag so that we know if we have a pending message
-	waiting := false
-	var latestRelayTime time.Time
-
-	// To avoid duplication below.
-	queuePacket := func(msg Msg, list *list.List, waiting bool) bool {
-		if !waiting {
-			h.msgRelay <- msg
-			latestRelayTime = time.Now()
-		} else {
-			list.PushBack(msg)
-		}
-		// we are always waiting now.
-		return true
-	}
-
-	relayPacket := func() {
-		next := pendingMsgs.Front()
-		if next == nil {
-			waiting = false
-			return
-		}
-		val := pendingMsgs.Remove(next)
-		h.msgRelay <- val.(Msg)
-		latestRelayTime = time.Now()
-		log.Println("relay message")
-	}
-
 	for {
 		select {
 		case msg := <-h.msgQueue:
 			// save message
 			h.messageLog.Write(msg.message)
-
-			waiting = queuePacket(msg, pendingMsgs, waiting)
-		case <-h.relayDone:
-			relayPacket()
-		case <-ticker.C:
-			if time.Now().Sub(latestRelayTime) > time.Second && pendingMsgs.Len() > 0 {
-				log.Println("relayDone timeout")
-				relayPacket()
+			pendingMsgs.PushBack(msg)
+			// save first
+			qlen := len(h.msgQueue)
+			for index := 0; index < qlen; index++ {
+				msg = <-h.msgQueue
+				h.messageLog.Write(msg.message)
+				pendingMsgs.PushBack(msg)
+			}
+			// relay
+			for {
+				next := pendingMsgs.Front()
+				if next == nil {
+					break
+				}
+				val := pendingMsgs.Remove(next)
+				h.msgRelay <- val.(Msg)
 			}
 		}
 	}
@@ -711,7 +687,6 @@ func (h *Hub) messageHandler() {
 			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
 			if err != nil {
 				fmt.Println(err)
-				h.relayDone <- struct{}{}
 				continue
 			}
 			log.Println("messagehandler receve a message to ", header.To)
@@ -721,7 +696,6 @@ func (h *Hub) messageHandler() {
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers[to]; ok {
 					client.PushMessage(msg.message, nil)
-					h.relayDone <- struct{}{}
 					continue
 				}
 
@@ -729,7 +703,6 @@ func (h *Hub) messageHandler() {
 				client, err := h.clientCache.GetClient(to)
 				if err != nil {
 					fmt.Println(err)
-					h.relayDone <- struct{}{}
 					continue
 				}
 
@@ -738,7 +711,6 @@ func (h *Hub) messageHandler() {
 					if server, ok := h.serverPeers[client.ServerID]; ok {
 						server.PushMessage(msg.message, nil)
 					}
-					h.relayDone <- struct{}{}
 					continue
 				}
 				log.Println("message lost,client is offline:", to)
@@ -754,11 +726,9 @@ func (h *Hub) messageHandler() {
 				clients, err := h.groupCache.GetGroupMembers(group)
 				if err != nil {
 					fmt.Println(err)
-					h.relayDone <- struct{}{}
 					continue
 				}
 				if len(clients) == 0 {
-					h.relayDone <- struct{}{}
 					continue
 				}
 				log.Println("group message to clients:", clients)
@@ -771,8 +741,6 @@ func (h *Hub) messageHandler() {
 					}
 				}
 			}
-
-			h.relayDone <- struct{}{}
 		}
 	}
 }
