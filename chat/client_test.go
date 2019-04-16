@@ -19,7 +19,7 @@ func Test_sendtoclient(t *testing.T) {
 	ticker := time.NewTicker(time.Second)
 
 	peerNum := 100
-	sendNum := peerNum * 10
+	sendNum := peerNum * 1
 
 	defer ticker.Stop()
 	go func() {
@@ -47,6 +47,7 @@ func Test_sendtoclient(t *testing.T) {
 	t1 := time.Now()
 	for index := 0; index < sendNum; index++ {
 		sendtoclient(syspeer, fmt.Sprintf("client_%v", index%peerNum))
+		// time.Sleep(time.Second)
 	}
 	t2 := time.Now()
 	log.Printf("send message[%v], cost time: %v", sendNum, t2.Sub(t1))

@@ -654,19 +654,34 @@ func (h *Hub) peerHandler() {
 func (h *Hub) messageQueueHandler() {
 	log.Println("start messageQueueHandler")
 	pendingMsgs := list.New()
+	ticker := time.NewTicker(time.Second)
 
 	// We keep the waiting flag so that we know if we have a pending message
 	waiting := false
+	var latestRelayTime time.Time
 
 	// To avoid duplication below.
 	queuePacket := func(msg Msg, list *list.List, waiting bool) bool {
 		if !waiting {
 			h.msgRelay <- msg
+			latestRelayTime = time.Now()
 		} else {
 			list.PushBack(msg)
 		}
 		// we are always waiting now.
 		return true
+	}
+
+	relayPacket := func() {
+		next := pendingMsgs.Front()
+		if next == nil {
+			waiting = false
+			return
+		}
+		val := pendingMsgs.Remove(next)
+		h.msgRelay <- val.(Msg)
+		latestRelayTime = time.Now()
+		log.Println("relay message")
 	}
 
 	for {
@@ -677,17 +692,12 @@ func (h *Hub) messageQueueHandler() {
 
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-h.relayDone:
-			log.Println("relayDone")
-			next := pendingMsgs.Front()
-			if next == nil {
-				waiting = false
-				continue
+			relayPacket()
+		case <-ticker.C:
+			if time.Now().Sub(latestRelayTime) > time.Second && pendingMsgs.Len() > 0 {
+				log.Println("relayDone timeout")
+				relayPacket()
 			}
-
-			// Notify the handleWirte about the next item to
-			// asynchronously send.
-			val := pendingMsgs.Remove(next)
-			h.msgRelay <- val.(Msg)
 		}
 	}
 }
