@@ -698,6 +698,7 @@ func (h *Hub) messageHandler() {
 			if err != nil {
 				log.Println(err)
 			}
+			h.msgRelayDone <- struct{}{}
 		}
 	}
 }
