@@ -47,6 +47,7 @@ func (c *MemGroupCache) Join(group string, clientID string) error {
 func (c *MemGroupCache) Leave(group string, clientID string) error {
 	c.RLock()
 	if _, ok := c.groups[group]; !ok {
+		c.RUnlock()
 		return nil
 	}
 	g := c.groups[group]
@@ -65,6 +66,7 @@ func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
 	c.RLock()
 	g, ok := c.groups[group]
 	if !ok {
+		c.RUnlock()
 		return nil, nil
 	}
 	c.RUnlock()
@@ -86,7 +88,6 @@ func clean(c *MemGroupCache) {
 	for {
 		select {
 		case <-ticker.C:
-
 			for name, group := range c.groups {
 				if len(group.Clients) == 0 {
 					c.Lock()
