@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -56,7 +57,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 		return err
 	}
 	if header.Scope != wire.ScopeNull {
-		p.hub.msgQueue <- Msg{from: serverFlag, message: message}
+		p.hub.msgQueue <- &Msg{from: serverFlag, message: message}
 	}
 	return nil
 }
@@ -163,7 +164,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
 		log.Println("message forward to hub", header)
 		// 消息转发
-		p.hub.msgQueue <- Msg{from: clientFlag, message: message}
+		p.hub.msgQueue <- &Msg{from: clientFlag, message: message}
 	}
 
 	// message ack
@@ -293,9 +294,10 @@ type Hub struct {
 	register   chan *addPeer
 	unregister chan *delPeer
 
-	msgRelay chan Msg
-	msgQueue chan Msg
-	quit     chan struct{}
+	msgRelay     chan *Msg
+	msgQueue     chan *Msg
+	msgRelayDone chan struct{}
+	quit         chan struct{}
 }
 
 // NewHub 创建一个 Server 对象，并初始化
@@ -335,20 +337,22 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	}
 
 	hub := &Hub{
-		upgrader:    upgrader,
-		config:      cfg,
-		ServerID:    cfg.Server.ID,
-		clientCache: clientCache,
-		serverCache: cfg.Cache.Server,
-		groupCache:  cfg.Cache.Group,
-		clientPeers: make(map[string]*ClientPeer, 1000),
-		serverPeers: make(map[uint64]*ServerPeer, 10),
-		register:    make(chan *addPeer, 1),
-		unregister:  make(chan *delPeer, 1),
-		msgQueue:    make(chan Msg, 100),
-		msgRelay:    make(chan Msg, 1),
-		messageLog:  messageLog,
-		quit:        make(chan struct{}),
+		upgrader:     upgrader,
+		config:       cfg,
+		ServerID:     cfg.Server.ID,
+		clientCache:  clientCache,
+		serverCache:  cfg.Cache.Server,
+		groupCache:   cfg.Cache.Group,
+		clientPeers:  make(map[string]*ClientPeer, 1000),
+		serverPeers:  make(map[uint64]*ServerPeer, 10),
+		register:     make(chan *addPeer, 1),
+		unregister:   make(chan *delPeer, 1),
+		msgQueue:     make(chan *Msg, 1),
+		msgRelay:     make(chan *Msg, 1),
+		msgRelayDone: make(chan struct{}, 1),
+
+		messageLog: messageLog,
+		quit:       make(chan struct{}),
 	}
 
 	// regist a service for client
@@ -461,7 +465,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
+	// fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
 
 	header := &wire.MessageHeader{
 		ID:      uint32(time.Now().Unix()),
@@ -485,7 +489,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, err.Error())
 		return
 	}
-	hub.msgQueue <- Msg{from: clientFlag, message: buf.Bytes()}
+	hub.msgQueue <- &Msg{from: clientFlag, message: buf.Bytes()}
 	fmt.Fprint(w, "ok")
 }
 
@@ -652,28 +656,35 @@ func (h *Hub) peerHandler() {
 func (h *Hub) messageQueueHandler() {
 	log.Println("start messageQueueHandler")
 	pendingMsgs := list.New()
+
+	// We keep the waiting flag so that we know if we have a pending message
+	waiting := false
+
+	// To avoid duplication below.
+	queuePacket := func(msg *Msg, list *list.List, waiting bool) bool {
+		if !waiting {
+			h.msgRelay <- msg
+		} else {
+			list.PushBack(msg)
+		}
+		log.Println("panding message ", list.Len())
+		// we are always waiting now.
+		return true
+	}
 	for {
 		select {
 		case msg := <-h.msgQueue:
-			// save message
 			h.messageLog.Write(msg.message)
-			pendingMsgs.PushBack(msg)
-			// save first
-			qlen := len(h.msgQueue)
-			for index := 0; index < qlen; index++ {
-				msg = <-h.msgQueue
-				h.messageLog.Write(msg.message)
-				pendingMsgs.PushBack(msg)
+			waiting = queuePacket(msg, pendingMsgs, waiting)
+		case <-h.msgRelayDone:
+			log.Println("msgRelayDone")
+			next := pendingMsgs.Front()
+			if next == nil {
+				waiting = false
+				continue
 			}
-			// relay
-			for {
-				next := pendingMsgs.Front()
-				if next == nil {
-					break
-				}
-				val := pendingMsgs.Remove(next)
-				h.msgRelay <- val.(Msg)
-			}
+			val := pendingMsgs.Remove(next)
+			h.msgRelay <- val.(*Msg)
 		}
 	}
 }
@@ -683,66 +694,71 @@ func (h *Hub) messageHandler() {
 	for {
 		select {
 		case msg := <-h.msgRelay:
-
-			header, err := wire.ReadHeader(bytes.NewReader(msg.message))
+			err := h.messageRelay(msg)
 			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			log.Println("messagehandler receve a message to ", header.To)
-
-			if header.Scope == wire.ScopeClient {
-				to := header.To
-				// 在当前服务器节点中找到了目标客户端
-				if client, ok := h.clientPeers[to]; ok {
-					client.PushMessage(msg.message, nil)
-					continue
-				}
-
-				// 读取目标client所在的服务器
-				client, err := h.clientCache.GetClient(to)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-
-				if client != nil {
-					// 消息转发过去
-					if server, ok := h.serverPeers[client.ServerID]; ok {
-						server.PushMessage(msg.message, nil)
-					}
-					continue
-				}
-				log.Println("message lost,client is offline:", to)
-			} else if header.Scope == wire.ScopeGroup {
-				group := header.To
-				// 如果消息是直接来源于 client。就转发到其它服务器
-				if msg.from == clientFlag {
-					for _, serverpeer := range h.serverPeers {
-						serverpeer.PushMessage(msg.message, nil)
-					}
-				}
-				// 读取群用户列表。转发
-				clients, err := h.groupCache.GetGroupMembers(group)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				if len(clients) == 0 {
-					continue
-				}
-				log.Println("group message to clients:", clients)
-				for _, clientID := range clients {
-					if client, ok := h.clientPeers[clientID]; ok {
-						client.PushMessage(msg.message, nil)
-					} else {
-						// 如果发现用户不存在就清理掉
-						h.groupCache.Leave(group, clientID)
-					}
-				}
+				log.Println(err)
 			}
 		}
 	}
+}
+
+var errMessageReceiverOffline = errors.New("Message Receiver is offline")
+
+func (h *Hub) messageRelay(msg *Msg) error {
+	header, err := wire.ReadHeader(bytes.NewReader(msg.message))
+	if err != nil {
+		return err
+	}
+	log.Println("messagehandler: a message to ", header.To)
+
+	if header.Scope == wire.ScopeClient {
+		to := header.To
+		// 在当前服务器节点中找到了目标客户端
+		if client, ok := h.clientPeers[to]; ok {
+			client.PushMessage(msg.message, nil)
+			return nil
+		}
+
+		// 读取目标client所在的服务器
+		client, err := h.clientCache.GetClient(to)
+		if err != nil {
+			return err
+		}
+
+		if client == nil {
+			return errMessageReceiverOffline
+		}
+
+		if server, ok := h.serverPeers[client.ServerID]; ok {
+			server.PushMessage(msg.message, nil)
+		}
+	} else if header.Scope == wire.ScopeGroup {
+		group := header.To
+		// 如果消息是直接来源于 client。就转发到其它服务器
+		if msg.from == clientFlag {
+			for _, serverpeer := range h.serverPeers {
+				serverpeer.PushMessage(msg.message, nil)
+			}
+		}
+		// 读取群用户列表。转发
+		clients, err := h.groupCache.GetGroupMembers(group)
+		if err != nil {
+			return err
+		}
+		if len(clients) == 0 {
+			return nil
+		}
+		log.Println("group message to clients:", clients)
+		for _, clientID := range clients {
+			if client, ok := h.clientPeers[clientID]; ok {
+				client.PushMessage(msg.message, nil)
+			} else {
+				// 如果发现用户不存在就清理掉
+				h.groupCache.Leave(group, clientID)
+			}
+		}
+	}
+	return nil
 }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
