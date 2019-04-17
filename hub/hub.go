@@ -296,7 +296,7 @@ type Hub struct {
 
 	msgRelay     chan *Msg
 	msgQueue     chan *Msg
-	msgRelayDone chan struct{}
+	msgRelayDone chan uint32
 	quit         chan struct{}
 }
 
@@ -349,7 +349,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		unregister:   make(chan *delPeer, 1),
 		msgQueue:     make(chan *Msg, 1),
 		msgRelay:     make(chan *Msg, 1),
-		msgRelayDone: make(chan struct{}, 1),
+		msgRelayDone: make(chan uint32, 1),
 
 		messageLog: messageLog,
 		quit:       make(chan struct{}),
@@ -676,8 +676,8 @@ func (h *Hub) messageQueueHandler() {
 		case msg := <-h.msgQueue:
 			h.messageLog.Write(msg.message)
 			waiting = queuePacket(msg, pendingMsgs, waiting)
-		case <-h.msgRelayDone:
-			log.Println("msgRelayDone")
+		case ID := <-h.msgRelayDone:
+			log.Printf("message %v relayed \n", ID)
 			next := pendingMsgs.Front()
 			if next == nil {
 				waiting = false
@@ -694,21 +694,22 @@ func (h *Hub) messageHandler() {
 	for {
 		select {
 		case msg := <-h.msgRelay:
-			err := h.messageRelay(msg)
+			header, err := h.messageRelay(msg)
 			if err != nil {
 				log.Println(err)
 			}
-			h.msgRelayDone <- struct{}{}
+			log.Printf("message %v relaying \n", header.ID)
+			h.msgRelayDone <- header.ID
 		}
 	}
 }
 
 var errMessageReceiverOffline = errors.New("Message Receiver is offline")
 
-func (h *Hub) messageRelay(msg *Msg) error {
+func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 	header, err := wire.ReadHeader(bytes.NewReader(msg.message))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	log.Println("messagehandler: a message to ", header.To)
 
@@ -717,17 +718,17 @@ func (h *Hub) messageRelay(msg *Msg) error {
 		// 在当前服务器节点中找到了目标客户端
 		if client, ok := h.clientPeers[to]; ok {
 			client.PushMessage(msg.message, nil)
-			return nil
+			return header, nil
 		}
 
 		// 读取目标client所在的服务器
 		client, err := h.clientCache.GetClient(to)
 		if err != nil {
-			return err
+			return header, err
 		}
 
 		if client == nil {
-			return errMessageReceiverOffline
+			return header, errMessageReceiverOffline
 		}
 
 		if server, ok := h.serverPeers[client.ServerID]; ok {
@@ -744,10 +745,10 @@ func (h *Hub) messageRelay(msg *Msg) error {
 		// 读取群用户列表。转发
 		clients, err := h.groupCache.GetGroupMembers(group)
 		if err != nil {
-			return err
+			return header, err
 		}
 		if len(clients) == 0 {
-			return nil
+			return header, nil
 		}
 		log.Println("group message to clients:", clients)
 		for _, clientID := range clients {
@@ -759,7 +760,7 @@ func (h *Hub) messageRelay(msg *Msg) error {
 			}
 		}
 	}
-	return nil
+	return header, nil
 }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
