@@ -175,7 +175,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	log.Printf("client %v disconnected", p.entity.ID)
+	log.Printf("client %v disconnect", p.Peer.ID)
 	p.hub.unregister <- &delPeer{peer: p, done: nil}
 	return nil
 }
@@ -238,7 +238,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 		entity: client,
 	}
 
-	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
+	peer := peer.NewPeer(fmt.Sprintf("C%v_%v", client.ID, time.Now().Unix()), &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
@@ -417,7 +417,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	// 注册节点到服务器
 	hub.register <- &addPeer{peer: clientPeer, done: nil}
-	log.Printf("client %v connected from %v", clientID, r.RemoteAddr)
+	log.Printf("client %v connecting from %v", clientID, r.RemoteAddr)
 }
 
 // 处理来自服务器节点的连接
@@ -455,7 +455,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
 
-	log.Printf("server %v connected from %v", ID, r.RemoteAddr)
+	log.Printf("server %v connecting from %v", ID, r.RemoteAddr)
 }
 
 // 处理 http 过来的消息发送
@@ -604,15 +604,17 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
+				log.Println("detect a connection request. ID :", peer.Peer.ID)
+
 				if p, ok := h.clientPeers[peer.entity.ID]; ok {
 					// 如果节点已经登陆，就把前一个 peer踢下线
 					buf, _ := wire.MakeKillMessage(0, p.entity.ID)
-					fmt.Printf("kill client:%v \n", p.entity.ID)
+					fmt.Printf("kill client:%v \n", p.Peer.ID)
 					p.PushMessage(buf, nil)
 				} else {
-					client, err := h.clientCache.GetClient(peer.entity.ID)
+					client, _ := h.clientCache.GetClient(peer.entity.ID)
 					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
-					if err == nil && client != nil {
+					if client != nil {
 						buf, _ := wire.MakeKillMessage(0, peer.entity.ID)
 						if server, ok := h.serverPeers[client.ServerID]; ok {
 							server.PushMessage(buf, nil)
@@ -633,9 +635,14 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				if _, ok := h.clientPeers[peer.entity.ID]; ok {
+				if p, ok := h.clientPeers[peer.entity.ID]; ok {
+					if p.Peer.ID != peer.Peer.ID {
+						continue
+					}
 					delete(h.clientPeers, peer.entity.ID)
 					h.clientCache.DelClient(peer.entity.ID)
+					peer.Close()
+					log.Printf("client %v disconnected", peer.Peer.ID)
 				}
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
@@ -643,6 +650,7 @@ func (h *Hub) peerHandler() {
 					delete(h.serverPeers, peer.entity.ID)
 					delete(h.ServerSelf.OutServers, peer.entity.ID)
 					peer.Close()
+					log.Printf("server %v disconnected", peer.Peer.ID)
 				}
 			}
 			if p.done != nil {
@@ -676,7 +684,7 @@ func (h *Hub) messageQueueHandler() {
 		case msg := <-h.msgQueue:
 			h.messageLog.Write(msg.message)
 			waiting = queuePacket(msg, pendingMsgs, waiting)
-		case ID := <-h.msgRelayDone:
+		case <-h.msgRelayDone:
 			// log.Printf("message %v relayed \n", ID)
 			next := pendingMsgs.Front()
 			if next == nil {

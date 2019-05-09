@@ -23,7 +23,7 @@ const (
 	secret = "xxx123456"
 )
 
-const sendurl = "http://192.168.0.127:8380/msg/send"
+const sendurl = "http://192.168.0.188:8380/msg/send"
 
 func main() {
 	wg := sync.WaitGroup{}
@@ -38,9 +38,9 @@ func main() {
 			msg := database.ChatMsg{
 				From:  "sys",
 				Scope: wire.ScopeGroup,
-				To:    "fb_bet_now_notify",
+				To:    "fb_score_notify",
 				Type:  1,
-				Text:  "1384201",
+				Text:  "{\"sportId\":1,\"goalTime\":35,\"league\":\"xxx\",\"homeTeam\":\"A\",\"vistingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}",
 			}
 
 			d, _ := json.Marshal(msg)

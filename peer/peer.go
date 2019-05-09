@@ -56,7 +56,7 @@ type outMessage struct {
 
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
-	id            string
+	ID            string
 	config        *Config
 	conn          *websocket.Conn
 	outQueue      chan outMessage
@@ -88,7 +88,7 @@ func NewPeer(id string, config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
-		id:        id,
+		ID:        id,
 		config:    config,
 		outQueue:  make(chan outMessage, 1),
 		sendQueue: make(chan outMessage, 1),
@@ -115,7 +115,7 @@ func (p *Peer) start() {
 	go p.inMessageHandler()
 	go p.outQueueHandler()
 	go p.outMessageHandler()
-	log.Printf("peer %v started", p.id)
+	log.Printf("peer %v started", p.ID)
 }
 
 func (p *Peer) inMessageHandler() {
@@ -138,7 +138,7 @@ func (p *Peer) inMessageHandler() {
 			break
 		}
 		if messageType == websocket.CloseMessage {
-			log.Println("closed:", p.id)
+			log.Println("closed:", p.ID)
 			break
 		}
 
