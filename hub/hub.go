@@ -604,8 +604,6 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				log.Println("detect a connection request. ID :", peer.Peer.ID)
-
 				if p, ok := h.clientPeers[peer.entity.ID]; ok {
 					// 如果节点已经登陆，就把前一个 peer踢下线
 					buf, _ := wire.MakeKillMessage(0, p.entity.ID)
