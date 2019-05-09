@@ -43,16 +43,20 @@ class WsClient {
             this.onOpen(true)
             this.client.id = id
             this.reconnectTimes = 0
+
+            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
         }
         this.conn.onclose = (evt) => {
             this._onclose()
+            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
         this.conn.onerror = (evt) => {
             console.error("websocket open failed! event_type: " + evt.type)
             this.onOpen(false)
+            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
 
     }
@@ -72,7 +76,7 @@ class WsClient {
             i += 4 + len;
         }
     }
-    _onkill(){
+    _onkill() {
         this.close()
         this.onKill()
     }
@@ -80,6 +84,12 @@ class WsClient {
         this.forceExit = true
         this.client = {}
         this.conn.close()
+    }
+    /**
+     * 0: connecting  1:open 2:closing 3；close
+     */
+    getConnState() {
+        return this.conn.readyState
     }
     // 连接关闭
     _onclose() {
@@ -94,6 +104,7 @@ class WsClient {
             if (this.reconnectTimes > 20) {
                 return
             }
+            console.log("try to reconnect")
             this.reconnectTimes = (this.reconnectTimes || 0) + 1
             this.login(this.client.id);
         }, 3000);
