@@ -40,9 +40,13 @@ class WsClient {
 
         this.conn.onopen = (evt) => {
             console.log("websocket open success! event_type: " + evt.type)
-            this.onOpen(true)
             this.client.id = id
             this.reconnectTimes = 0
+            try {
+                this.onOpen(true)
+            } catch (error) {
+                console.log(error)
+            }
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
@@ -52,7 +56,11 @@ class WsClient {
         }
         this.conn.onerror = (evt) => {
             console.error("websocket open failed! event_type: " + evt.type)
-            this.onOpen(false)
+            try {
+                this.onOpen(false)
+            } catch (error) {
+                console.log(error)
+            }
         }
     }
     // 接收到消息之后处理

@@ -677,7 +677,7 @@ func (h *Hub) messageQueueHandler() {
 			h.messageLog.Write(msg.message)
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case ID := <-h.msgRelayDone:
-			log.Printf("message %v relayed \n", ID)
+			// log.Printf("message %v relayed \n", ID)
 			next := pendingMsgs.Front()
 			if next == nil {
 				waiting = false
@@ -698,7 +698,7 @@ func (h *Hub) messageHandler() {
 			if err != nil {
 				log.Println(err)
 			}
-			log.Printf("message %v relaying \n", header.ID)
+			// log.Printf("message %v relaying \n", header.ID)
 			h.msgRelayDone <- header.ID
 		}
 	}
