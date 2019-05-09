@@ -43,22 +43,17 @@ class WsClient {
             this.onOpen(true)
             this.client.id = id
             this.reconnectTimes = 0
-
-            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
         }
         this.conn.onclose = (evt) => {
             this._onclose()
-            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
         this.conn.onerror = (evt) => {
             console.error("websocket open failed! event_type: " + evt.type)
             this.onOpen(false)
-            console.log("this.conn.CLOSED: ", this.conn.CLOSED)
         }
-
     }
     // 接收到消息之后处理
     _onmessage(data) {
