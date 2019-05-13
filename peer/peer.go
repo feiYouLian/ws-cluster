@@ -17,10 +17,10 @@ const (
 	defaultWriteWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	defaultPongWait = 60 * time.Second
+	defaultPongWait = 20 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
-	defaultPingPeriod = 30 * time.Second
+	defaultPingPeriod = 10 * time.Second
 
 	// Maximum message size allowed from peer.
 	defaultMaxMessageSize = 512
