@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	blockSize = 1024
-	// blockSize = 4 * 1024
+	// blockSize = 1024
+	blockSize = 4 * 1024
 )
 
 var (

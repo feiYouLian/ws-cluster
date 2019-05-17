@@ -38,8 +38,8 @@ type ChatMsg struct {
 	From     string
 	Scope    uint8
 	To       string
-	Type     uint8 //msg type
-	Text     string
+	Type     uint8  //msg type
+	Text     string `xorm:"varchar(1024)"`
 	Extra    string
 	CreateAt time.Time
 }
