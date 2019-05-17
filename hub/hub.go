@@ -753,10 +753,11 @@ func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 		if err != nil {
 			return header, err
 		}
-		if len(clients) == 0 {
+		clen := len(clients)
+		if clen == 0 {
 			return header, nil
 		}
-		log.Println("group message to clients:", clients)
+		log.Println("group message to clients:", clen)
 		for _, clientID := range clients {
 			if client, ok := h.clientPeers[clientID]; ok {
 				client.PushMessage(msg.message, nil)
