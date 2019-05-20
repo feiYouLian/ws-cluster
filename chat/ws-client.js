@@ -12,13 +12,14 @@ function getId() {
 class WsClient {
     constructor(opt) {
         opt = opt || {}
-        if (opt.autoConnect === undefined) {
-            opt.autoConnect = true
+        if (opt.reconnect === undefined) {
+            opt.reconnect = true
         }
         this.cfg = {
             url: opt.url,
             secret: opt.secret,
-            autoConnect: opt.autoConnect,
+            reconnect: opt.reconnect,
+            reconnectTimes: opt.reconnectTimes || 20,
         }
         this.onOpen = function () { }
         this.onClose = function () { }
@@ -30,6 +31,9 @@ class WsClient {
         this.groups = new Set()
     }
     login(id) {
+        if (id === undefined || id === "") {
+            return
+        }
         id = id + '';
         let nonce = Date.now() + "";
         let digest = md5(`${id}${nonce}${this.cfg.secret}`)
@@ -96,15 +100,16 @@ class WsClient {
     }
     // 连接关闭
     _onclose() {
-        if (this.forceExit || !this.cfg.autoConnect) {
-            if (!this.cfg.autoConnect) {
+        if (this.forceExit || !this.cfg.reconnect) {
+            if (!this.cfg.reconnect) {
                 this.onClose()
             }
             return true
         }
         // 1 min 内尝试重连
         setTimeout(() => {
-            if (this.reconnectTimes > 20) {
+            if (this.reconnectTimes > this.cfg.reconnectTimes) {
+                this.onClose()
                 return
             }
             console.log("try to reconnect")
