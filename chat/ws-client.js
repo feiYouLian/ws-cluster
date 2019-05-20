@@ -177,6 +177,7 @@ class WsClient {
         let header = new MessageHeader(getId(), MsgTypeConst.GroupInOut)
         let msg = new MsgGroupInOut(header, 1, groups)
         this.send(msg)
+        console.log("joinGroups:" + groups)
         groups.forEach(group => {
             this.groups.add(group)
         })
@@ -184,7 +185,7 @@ class WsClient {
     }
     leaveGroups(groups) {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
-            console.log("joinGroups: groups no found")
+            console.log("leaveGroups: groups no found")
             return
         }
         if (groups.constructor.name !== "Array") {
@@ -193,6 +194,8 @@ class WsClient {
         let header = new MessageHeader(getId(), MsgTypeConst.GroupInOut)
         let msg = new MsgGroupInOut(header, 0, groups)
         this.send(msg)
+        console.log("leaveGroups:" + groups)
+
         groups.forEach(group => {
             this.groups.delete(group)
         })
