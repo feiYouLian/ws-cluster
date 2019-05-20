@@ -19,7 +19,7 @@ class WsClient {
             url: opt.url,
             secret: opt.secret,
             reconnect: opt.reconnect,
-            reconnectTimes: opt.reconnectTimes || 20,
+            reconnectTimes: opt.reconnectTimes || 600, //default 30 minutes
         }
         this.onOpen = function () { }
         this.onClose = function () { }
@@ -51,6 +51,7 @@ class WsClient {
             } catch (error) {
                 console.log(error)
             }
+            // join groups while 
             if (this.groups.size > 0) {
                 var groups = []
                 this.groups.forEach(g => groups.push(g))
