@@ -59,7 +59,7 @@ class WsClient {
             this._onclose()
         }
         this.conn.onerror = (evt) => {
-            console.error("websocket open failed! event_type: " + evt.type)
+            console.log("websocket open failed! event_type: " + evt.type)
             try {
                 this.onOpen(false)
             } catch (error) {
@@ -161,7 +161,7 @@ class WsClient {
     }
     joinGroups(groups) {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
-            console.error("joinGroups: groups no found")
+            console.log("joinGroups: groups no found")
             return
         }
         if (groups.constructor.name !== "Array") {
@@ -177,7 +177,7 @@ class WsClient {
     }
     leaveGroups(groups) {
         if (groups === undefined || groups.length === undefined || groups.length === 0) {
-            console.error("joinGroups: groups no found")
+            console.log("joinGroups: groups no found")
             return
         }
         if (groups.constructor.name !== "Array") {
@@ -437,7 +437,7 @@ const MsgUtils = {
             message.decode(buf)
             return message
         } catch (error) {
-            console.error(error)
+            console.log(error)
         }
         return null
     },
@@ -453,7 +453,7 @@ const MsgUtils = {
             buf.setUint32(0, buf.length - 4)
             return buf.getBytes()
         } catch (error) {
-            console.error(error)
+            console.log(error)
         }
         return []
     },
