@@ -51,6 +51,11 @@ class WsClient {
             } catch (error) {
                 console.log(error)
             }
+            if (this.groups.size > 0) {
+                var groups = []
+                this.groups.forEach(g => groups.push(g))
+                this.joinGroups(groups)
+            }
         }
         this.conn.onmessage = (evt) => {
             this._onmessage(evt.data)
@@ -90,6 +95,7 @@ class WsClient {
     close() {
         this.forceExit = true
         this.client = {}
+        this.groups = new Set()
         this.conn.close()
     }
     /**
