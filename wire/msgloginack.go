@@ -4,14 +4,14 @@ import (
 	"io"
 )
 
-// MsgKill 通知连接下线
-type MsgKill struct {
+// MsgLoginAck 单聊消息应答
+type MsgLoginAck struct {
 	header *MessageHeader
 	PeerID string
 }
 
 // decode Decode
-func (m *MsgKill) decode(r io.Reader) error {
+func (m *MsgLoginAck) decode(r io.Reader) error {
 	var err error
 	if m.PeerID, err = ReadString(r); err != nil {
 		return err
@@ -20,7 +20,7 @@ func (m *MsgKill) decode(r io.Reader) error {
 }
 
 // encode Encode
-func (m *MsgKill) encode(w io.Writer) error {
+func (m *MsgLoginAck) encode(w io.Writer) error {
 	var err error
 	if err = WriteString(w, m.PeerID); err != nil {
 		return err
@@ -29,6 +29,6 @@ func (m *MsgKill) encode(w io.Writer) error {
 }
 
 // Header 头信息
-func (m *MsgKill) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeKill, ScopeClient, m.header.To}
+func (m *MsgLoginAck) Header() *MessageHeader {
+	return &MessageHeader{m.header.ID, MsgTypeLoginAck, ScopeNull, ""}
 }

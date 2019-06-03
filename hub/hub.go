@@ -606,14 +606,14 @@ func (h *Hub) peerHandler() {
 				peer := p.peer.(*ClientPeer)
 				if p, ok := h.clientPeers[peer.entity.ID]; ok {
 					// 如果节点已经登陆，就把前一个 peer踢下线
-					buf, _ := wire.MakeKillMessage(0, p.entity.ID)
+					buf, _ := wire.MakeKillMessage(0, p.entity.ID, p.ID)
 					fmt.Printf("kill client:%v \n", p.Peer.ID)
 					p.PushMessage(buf, nil)
 				} else {
 					client, _ := h.clientCache.GetClient(peer.entity.ID)
 					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
 					if client != nil {
-						buf, _ := wire.MakeKillMessage(0, peer.entity.ID)
+						buf, _ := wire.MakeKillMessage(0, peer.entity.ID, peer.ID)
 						if server, ok := h.serverPeers[client.ServerID]; ok {
 							server.PushMessage(buf, nil)
 						}
@@ -621,6 +621,7 @@ func (h *Hub) peerHandler() {
 				}
 				h.clientPeers[peer.entity.ID] = peer
 				h.clientCache.AddClient(peer.entity)
+				peerRegistAck(peer)
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				h.serverPeers[peer.entity.ID] = peer
@@ -656,6 +657,12 @@ func (h *Hub) peerHandler() {
 			}
 		}
 	}
+}
+
+// login ack ,return a peerId to client
+func peerRegistAck(peer *ClientPeer) {
+	buf, _ := wire.MakeLoginAckMessage(0, peer.ID)
+	peer.PushMessage(buf, nil)
 }
 
 // 处理消息queue

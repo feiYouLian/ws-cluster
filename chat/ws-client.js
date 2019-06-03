@@ -83,14 +83,22 @@ class WsClient {
             let packet = arr.subarray(i + 4, len + 4)
             let message = MsgUtils.decode(packet)
             if (message.header.msgType == MsgTypeConst.Kill) {
-                this._onkill()
+                this._onkill(message.peerID)
                 return
+            }
+            else if (message.header.msgType == MsgTypeConst.LoginAck) {
+                this.client.peerID = message.peerID
+                continue
             }
             this.onMessage(message)
             i += 4 + len;
         }
     }
-    _onkill() {
+    _onkill(peerID) {
+        if (this.client.peerID == peerID) {
+            console.log("peer is invaild:" + peerID)
+            return
+        }
         this.close()
         this.onKill()
     }
@@ -221,6 +229,7 @@ const MsgTypeConst = {
     Chat: 3,  //  聊天消息
     GroupInOut: 5, //group in out
     Kill: 7, //kill
+    LoginAck: 100, //loginAck
 }
 
 // ScopeConst 消息发送范围
@@ -360,12 +369,28 @@ class MsgAck extends Message {
 
 
 class MsgKill extends Message {
-    constructor(header) {
+    constructor(header, peerID) {
         super(header)
+        this.peerID = peerID
     }
     decode(buf) {
+        this.peerID = buf.getString()
     }
     encode(buf) {
+        buf.putString(this.peerID)
+    }
+}
+
+class MsgLoginAck extends Message {
+    constructor(header, peerID) {
+        super(header)
+        this.peerID = peerID
+    }
+    decode(buf) {
+        this.peerID = buf.getString()
+    }
+    encode(buf) {
+        buf.putString(this.peerID)
     }
 }
 
@@ -484,6 +509,8 @@ const MsgUtils = {
                 return new MsgGroupInOut(header);
             case MsgTypeConst.Kill:
                 return new MsgKill(header);
+            case MsgTypeConst.LoginAck:
+                return new MsgLoginAck(header);
             default:
                 return null;
         }

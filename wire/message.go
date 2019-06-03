@@ -15,6 +15,8 @@ const (
 	MsgTypeGroupInOut = uint8(5)
 	// MsgTypeKill kill a client
 	MsgTypeKill = uint8(7)
+	// MsgTypeLoginAck login ack
+	MsgTypeLoginAck = uint8(100)
 )
 
 const (
@@ -123,6 +125,8 @@ func MakeEmptyMessage(header *MessageHeader) (Message, error) {
 		msg = &MsgGroupInOut{header: header}
 	case MsgTypeKill:
 		msg = &MsgKill{header: header}
+	case MsgTypeLoginAck:
+		msg = &MsgLoginAck{header: header}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", header.Msgtype)
 	}
@@ -146,9 +150,27 @@ func MakeAckMessage(id uint32, state uint8) ([]byte, error) {
 }
 
 // MakeKillMessage kill to
-func MakeKillMessage(id uint32, client string) ([]byte, error) {
+func MakeKillMessage(id uint32, client string, peerID string) ([]byte, error) {
 	header := &MessageHeader{ID: id, Msgtype: MsgTypeKill, Scope: ScopeClient, To: client}
 	message, _ := MakeEmptyMessage(header)
+	msgKill := message.(*MsgKill)
+	msgKill.PeerID = peerID
+
+	buf := &bytes.Buffer{}
+	err := WriteMessage(buf, message)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// MakeLoginAckMessage login ack
+func MakeLoginAckMessage(id uint32, peerID string) ([]byte, error) {
+	header := &MessageHeader{ID: id, Msgtype: MsgTypeLoginAck}
+	message, _ := MakeEmptyMessage(header)
+	msgLoginAck := message.(*MsgLoginAck)
+	msgLoginAck.PeerID = peerID
+
 	buf := &bytes.Buffer{}
 	err := WriteMessage(buf, message)
 	if err != nil {
