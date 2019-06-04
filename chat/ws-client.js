@@ -3,6 +3,7 @@ import md5 from 'md5'
 import * as byte from 'byte-data';
 import getByteLength from 'utf8-byte-length';
 
+
 let _latest_id = 0
 function getId() {
     _latest_id++

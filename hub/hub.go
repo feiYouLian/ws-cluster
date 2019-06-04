@@ -238,7 +238,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 		entity: client,
 	}
 
-	peer := peer.NewPeer(fmt.Sprintf("C%v_%v", client.ID, time.Now().Unix()), &peer.Config{
+	peer := peer.NewPeer(fmt.Sprintf("C%v_%v", client.ID, time.Now().UnixNano()), &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
