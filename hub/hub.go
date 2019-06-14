@@ -680,7 +680,7 @@ func (h *Hub) messageQueueHandler() {
 		} else {
 			list.PushBack(msg)
 		}
-		log.Println("panding message ", list.Len())
+		// log.Println("panding message ", list.Len())
 		// we are always waiting now.
 		return true
 	}
@@ -724,7 +724,7 @@ func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("messagehandler: a message to ", header.To)
+	// log.Println("messagehandler: a message to ", header.To)
 
 	if header.Scope == wire.ScopeClient {
 		to := header.To
@@ -801,7 +801,7 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 	if err != nil {
 		return err
 	}
-	log.Printf("save messages : %v ", len(messages))
+	// log.Printf("save messages : %v ", len(messages))
 	return nil
 }
 
