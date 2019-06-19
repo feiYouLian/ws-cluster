@@ -156,7 +156,7 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 				if err = p.hub.groupCache.Leave(group, p.entity.ID); err != nil {
 					st = wire.AckStateFail
 				}
-				log.Printf("[%v]join Leave[%v]", p.entity.ID, group)
+				log.Printf("[%v]leave group[%v]", p.entity.ID, group)
 			}
 		}
 	}
