@@ -40,10 +40,7 @@ func (c *MemGroupCache) Leave(group string, clientID string) error {
 // GetGroupMembers 取群中成员
 func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
 	g, ok := c.groups[group]
-	if !ok {
-		return nil, nil
-	}
-	if len(g.Clients) == 0 {
+	if !ok || len(g.Clients) == 0 {
 		return nil, nil
 	}
 	mems := make([]string, len(g.Clients))
@@ -72,7 +69,6 @@ func handleEvent(c *MemGroupCache) {
 					}
 					g = c.groups[group]
 				}
-
 				if _, ok := g.Clients[clientID]; !ok {
 					g.Clients[clientID] = true
 				}
