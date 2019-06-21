@@ -10,7 +10,7 @@ type MemGroupCache struct {
 
 type oper struct {
 	op       int8 // 1 join 2 leave
-	group    string
+	groups   []string
 	clientID string
 }
 
@@ -26,22 +26,30 @@ func NewMemGroupCache() *MemGroupCache {
 }
 
 // Join 加入一个群，如果群不存在就创建一个
-func (c *MemGroupCache) Join(group string, clientID string) error {
-	c.event <- oper{1, group, clientID}
-	return nil
+func (c *MemGroupCache) Join(group string, clientID string) {
+	c.event <- oper{1, []string{group}, clientID}
 }
 
 // Leave 退出群
-func (c *MemGroupCache) Leave(group string, clientID string) error {
-	c.event <- oper{2, group, clientID}
-	return nil
+func (c *MemGroupCache) Leave(group string, clientID string) {
+	c.event <- oper{2, []string{group}, clientID}
+}
+
+// JoinMany 加入一个群，如果群不存在就创建一个
+func (c *MemGroupCache) JoinMany(clientID string, groups []string) {
+	c.event <- oper{1, groups, clientID}
+}
+
+// LeaveMany 退出群
+func (c *MemGroupCache) LeaveMany(clientID string, groups []string) {
+	c.event <- oper{2, groups, clientID}
 }
 
 // GetGroupMembers 取群中成员
-func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
+func (c *MemGroupCache) GetGroupMembers(group string) []string {
 	g, ok := c.groups[group]
 	if !ok || len(g.Clients) == 0 {
-		return nil, nil
+		return nil
 	}
 	mems := make([]string, len(g.Clients))
 	index := 0
@@ -49,7 +57,19 @@ func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
 		mems[index] = key
 		index++
 	}
-	return mems, nil
+	return mems
+}
+
+// GetGroups GetGroups
+func (c *MemGroupCache) GetGroups() []string {
+	glen := len(c.groups)
+	groups := make([]string, glen)
+	index := 0
+	for key := range c.groups {
+		groups[index] = key
+		index++
+	}
+	return groups
 }
 
 func handleEvent(c *MemGroupCache) {
@@ -58,28 +78,35 @@ func handleEvent(c *MemGroupCache) {
 	for {
 		select {
 		case ev := <-c.event:
-			group := ev.group
+			groups := ev.groups
+			if len(groups) == 0 {
+				continue
+			}
 			clientID := ev.clientID
 			if ev.op == 1 { //join
-				g, ok := c.groups[group]
-				if !ok {
-					c.groups[group] = &Group{
-						Name:    group,
-						Clients: make(map[string]bool, 100),
+				for _, group := range groups {
+					g, ok := c.groups[group]
+					if !ok {
+						c.groups[group] = &Group{
+							Name:    group,
+							Clients: make(map[string]bool, 100),
+						}
+						g = c.groups[group]
 					}
-					g = c.groups[group]
-				}
-				if _, ok := g.Clients[clientID]; !ok {
-					g.Clients[clientID] = true
+					if _, ok := g.Clients[clientID]; !ok {
+						g.Clients[clientID] = true
+					}
 				}
 			} else if ev.op == 2 {
-				if _, ok := c.groups[group]; !ok {
-					continue
-				}
-				g := c.groups[group]
+				for _, group := range groups {
+					if _, ok := c.groups[group]; !ok {
+						continue
+					}
+					g := c.groups[group]
 
-				if _, ok := g.Clients[clientID]; ok {
-					delete(g.Clients, clientID)
+					if _, ok := g.Clients[clientID]; ok {
+						delete(g.Clients, clientID)
+					}
 				}
 			}
 		case <-ticker.C:

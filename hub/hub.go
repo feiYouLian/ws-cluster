@@ -144,22 +144,17 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	switch header.Msgtype {
 	case wire.MsgTypeGroupInOut:
 		msg, err := wire.ReadMessage(bytes.NewReader(message))
+		if err != nil {
+			return err
+		}
 		msgGroup := msg.(*wire.MsgGroupInOut)
 
 		switch msgGroup.InOut {
 		case wire.GroupIn:
-			for _, group := range msgGroup.Groups {
-				if err = p.hub.groupCache.Join(group, p.entity.ID); err != nil {
-					st = wire.AckStateFail
-				}
-			}
+			p.hub.groupCache.JoinMany(p.entity.ID, msgGroup.Groups)
 			log.Printf("[%v]join groups: %v", p.entity.ID, msgGroup.Groups)
 		case wire.GroupOut:
-			for _, group := range msgGroup.Groups {
-				if err = p.hub.groupCache.Leave(group, p.entity.ID); err != nil {
-					st = wire.AckStateFail
-				}
-			}
+			p.hub.groupCache.LeaveMany(p.entity.ID, msgGroup.Groups)
 			log.Printf("[%v]leave groups: %v", p.entity.ID, msgGroup.Groups)
 		}
 
@@ -760,10 +755,8 @@ func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 			}
 		}
 		// 读取群用户列表。转发
-		clients, err := h.groupCache.GetGroupMembers(group)
-		if err != nil {
-			return header, err
-		}
+		clients := h.groupCache.GetGroupMembers(group)
+
 		clen := len(clients)
 		if clen == 0 {
 			return header, nil

@@ -18,7 +18,10 @@ type ServerCache interface {
 
 // GroupCache GroupCache
 type GroupCache interface {
-	Join(group string, clientID string) error
-	Leave(group string, clientID string) error
-	GetGroupMembers(group string) ([]string, error)
+	Join(group string, clientID string)
+	Leave(group string, clientID string)
+	JoinMany(clientID string, group []string)
+	LeaveMany(clientID string, group []string)
+	GetGroupMembers(group string) []string
+	GetGroups() []string
 }
