@@ -1,98 +1,95 @@
 package database
 
-import (
-	"sync"
-	"time"
-)
+import "time"
 
 // MemGroupCache 群缓存
 type MemGroupCache struct {
-	sync.RWMutex
 	groups map[string]*Group
+	event  chan oper
+}
+
+type oper struct {
+	op       int8 // 1 join 2 leave
+	group    string
+	clientID string
 }
 
 // NewMemGroupCache NewMemGroupCache
 func NewMemGroupCache() *MemGroupCache {
 	c := &MemGroupCache{
 		groups: make(map[string]*Group),
+		event:  make(chan oper, 0), // no buffer channal
 	}
-	go clean(c)
+	go handleEvent(c)
 
 	return c
 }
 
 // Join 加入一个群，如果群不存在就创建一个
 func (c *MemGroupCache) Join(group string, clientID string) error {
-	c.Lock()
-	g, ok := c.groups[group]
-	if !ok {
-		c.groups[group] = &Group{
-			Name:    group,
-			Clients: make(map[string]bool),
-		}
-		g = c.groups[group]
-	}
-	c.Unlock()
-
-	g.rw.Lock()
-	if _, ok := g.Clients[clientID]; !ok {
-		g.Clients[clientID] = true
-	}
-	// log.Println(g.Clients)
-	g.rw.Unlock()
+	c.event <- oper{1, group, clientID}
 	return nil
 }
 
 // Leave 退出群
 func (c *MemGroupCache) Leave(group string, clientID string) error {
-	c.RLock()
-	if _, ok := c.groups[group]; !ok {
-		c.RUnlock()
-		return nil
-	}
-	g := c.groups[group]
-	c.RUnlock()
-
-	g.rw.Lock()
-	if _, ok := g.Clients[clientID]; ok {
-		delete(g.Clients, clientID)
-	}
-	g.rw.Unlock()
+	c.event <- oper{2, group, clientID}
 	return nil
 }
 
 // GetGroupMembers 取群中成员
 func (c *MemGroupCache) GetGroupMembers(group string) ([]string, error) {
-	c.RLock()
 	g, ok := c.groups[group]
 	if !ok {
-		c.RUnlock()
 		return nil, nil
 	}
-	c.RUnlock()
-
-	g.rw.RLock()
+	if len(g.Clients) == 0 {
+		return nil, nil
+	}
 	mems := make([]string, len(g.Clients))
 	index := 0
 	for key := range g.Clients {
 		mems[index] = key
 		index++
 	}
-	g.rw.RUnlock()
 	return mems, nil
 }
 
-func clean(c *MemGroupCache) {
+func handleEvent(c *MemGroupCache) {
 	ticker := time.NewTicker(time.Hour)
 
 	for {
 		select {
+		case ev := <-c.event:
+			group := ev.group
+			clientID := ev.clientID
+			if ev.op == 1 { //join
+				g, ok := c.groups[group]
+				if !ok {
+					c.groups[group] = &Group{
+						Name:    group,
+						Clients: make(map[string]bool, 100),
+					}
+					g = c.groups[group]
+				}
+
+				if _, ok := g.Clients[clientID]; !ok {
+					g.Clients[clientID] = true
+				}
+			} else if ev.op == 2 {
+				if _, ok := c.groups[group]; !ok {
+					continue
+				}
+				g := c.groups[group]
+
+				if _, ok := g.Clients[clientID]; ok {
+					delete(g.Clients, clientID)
+				}
+			}
 		case <-ticker.C:
 			for name, group := range c.groups {
 				if len(group.Clients) == 0 {
-					c.Lock()
 					delete(c.groups, name)
-					c.Unlock()
 				}
 			}
 		}

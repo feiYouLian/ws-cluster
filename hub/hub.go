@@ -145,20 +145,24 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 	case wire.MsgTypeGroupInOut:
 		msg, err := wire.ReadMessage(bytes.NewReader(message))
 		msgGroup := msg.(*wire.MsgGroupInOut)
-		for _, group := range msgGroup.Groups {
-			switch msgGroup.InOut {
-			case wire.GroupIn:
+
+		switch msgGroup.InOut {
+		case wire.GroupIn:
+			for _, group := range msgGroup.Groups {
 				if err = p.hub.groupCache.Join(group, p.entity.ID); err != nil {
 					st = wire.AckStateFail
 				}
-				log.Printf("[%v]join group[%v]", p.entity.ID, group)
-			case wire.GroupOut:
+			}
+			log.Printf("[%v]join groups: %v", p.entity.ID, msgGroup.Groups)
+		case wire.GroupOut:
+			for _, group := range msgGroup.Groups {
 				if err = p.hub.groupCache.Leave(group, p.entity.ID); err != nil {
 					st = wire.AckStateFail
 				}
-				log.Printf("[%v]leave group[%v]", p.entity.ID, group)
 			}
+			log.Printf("[%v]leave groups: %v", p.entity.ID, msgGroup.Groups)
 		}
+
 	}
 
 	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {

@@ -1,7 +1,6 @@
 package database
 
 import (
-	"sync"
 	"time"
 )
 
@@ -15,7 +14,6 @@ type Client struct {
 // Group 代表一个群，发往这个群的消息会转发给所有在此群中的用户。
 // 聊天室不保存
 type Group struct {
-	rw      sync.RWMutex
 	Name    string
 	Clients map[string]bool
 }
