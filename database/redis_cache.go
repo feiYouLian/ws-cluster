@@ -157,10 +157,11 @@ func (c *RedisServerCache) Clean() error {
 }
 
 // InitRedis return a redis instance
-func InitRedis(ip string, port int, pass string) (*redis.Client, error) {
+func InitRedis(ip string, port int, pass string, db int) (*redis.Client, error) {
 	redisdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", ip, port),
 		Password: pass,
+		DB:       db,
 	})
 	_, err := redisdb.Ping().Result()
 	if err != nil {

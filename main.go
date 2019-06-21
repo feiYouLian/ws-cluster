@@ -50,7 +50,7 @@ func main() {
 	var cache config.Cache
 	cache.Group = database.NewMemGroupCache()
 	if cfg.Server.Mode == config.ModeCluster {
-		redis, err := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password)
+		redis, err := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password, cfg.Redis.Db)
 		if err != nil {
 			log.Panicln(err)
 		}

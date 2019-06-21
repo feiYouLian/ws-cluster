@@ -49,6 +49,7 @@ type RedisConfig struct {
 	IP       string
 	Port     int
 	Password string
+	Db       int
 }
 
 // MysqlConfig mysql config
