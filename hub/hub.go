@@ -64,7 +64,7 @@ func (p *ServerPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
-	log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
+	// log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
 	if !p.isOutServer { //如果不是连接出去服务
 		p.hub.unregister <- &delPeer{peer: p}
 		return nil
@@ -108,7 +108,7 @@ func (p *ServerPeer) connect() error {
 
 	server := p.entity
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
-	log.Printf("connecting to %s", u.String())
+	// log.Printf("connecting to %s", u.String())
 
 	dialar := &websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,

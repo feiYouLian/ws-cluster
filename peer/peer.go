@@ -115,7 +115,7 @@ func (p *Peer) start() {
 	go p.inMessageHandler()
 	go p.outQueueHandler()
 	go p.outMessageHandler()
-	log.Printf("peer %v started", p.ID)
+	// log.Printf("peer %v started", p.ID)
 }
 
 func (p *Peer) inMessageHandler() {

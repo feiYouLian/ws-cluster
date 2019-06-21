@@ -16,10 +16,11 @@ func TestMemGroupCache_GetGroupMembers(t *testing.T) {
 		group.Leave("test", fmt.Sprintf("user %v", index))
 	}
 
+	time.Sleep(time.Second)
+
 	users, _ := group.GetGroupMembers("test")
 	if len(users) != 500 {
 		t.Error("GetGroupMembers ", len(users))
 	}
 
-	time.Sleep(3 * time.Second)
 }
