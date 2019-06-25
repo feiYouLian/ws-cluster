@@ -195,12 +195,7 @@ func (flog *FileLog) writeloop() {
 				block.reset()
 			}
 			err := block.write(wlog.bytes)
-			if err != nil {
-				wlog.err <- err
-			} else {
-				wlog.err <- nil
-			}
-
+			wlog.err <- err
 		case <-t.C:
 			if block.length > 0 {
 				// log.Println("append block to file, logs ", block.length)
