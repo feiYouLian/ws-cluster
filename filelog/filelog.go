@@ -128,13 +128,18 @@ func (block *Block) hasSpace(space uint16) bool {
 	return block.cap-block.offset >= space
 }
 
+type writeLog struct {
+	bytes []byte
+	err   chan error
+}
+
 // FileLog 用于记录数据
 type FileLog struct {
 	sync.Mutex
 	writeblock int
 	readblock  int
 	file       *os.File
-	writelog   chan []byte
+	writelog   chan writeLog
 	sub        func(log []*bytes.Buffer) error
 	quit       chan struct{}
 }
@@ -155,7 +160,7 @@ func NewFileLog(config *Config) (*FileLog, error) {
 
 	fl := &FileLog{
 		file:       f,
-		writelog:   make(chan []byte),
+		writelog:   make(chan writeLog),
 		sub:        config.SubFunc,
 		readblock:  int(readUint32(f, 0)),
 		writeblock: int(readUint32(f, 4)),
@@ -168,8 +173,10 @@ func NewFileLog(config *Config) (*FileLog, error) {
 }
 
 // Pub 写一条信息到文件
-func (flog *FileLog) Write(log []byte) {
-	flog.writelog <- log
+func (flog *FileLog) Write(log []byte) error {
+	errchan := make(chan error)
+	flog.writelog <- writeLog{log, errchan}
+	return <-errchan
 }
 
 func (flog *FileLog) writeloop() {
@@ -179,7 +186,7 @@ func (flog *FileLog) writeloop() {
 	for {
 		select {
 		case wlog := <-flog.writelog:
-			if !block.hasSpace(uint16(len(wlog) + 2)) {
+			if !block.hasSpace(uint16(len(wlog.bytes) + 2)) {
 				// log.Println("append block to file, logs ", block.length)
 				err := flog.appendBlock(block.bytes())
 				if err != nil {
@@ -187,10 +194,13 @@ func (flog *FileLog) writeloop() {
 				}
 				block.reset()
 			}
-			err := block.write(wlog)
+			err := block.write(wlog.bytes)
 			if err != nil {
-				log.Println(err)
+				wlog.err <- err
+			} else {
+				wlog.err <- nil
 			}
+
 		case <-t.C:
 			if block.length > 0 {
 				// log.Println("append block to file, logs ", block.length)

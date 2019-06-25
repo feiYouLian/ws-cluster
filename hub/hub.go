@@ -162,8 +162,12 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 
 	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
 		log.Println("message forward to hub", header)
+		errchan := make(chan error)
 		// 消息转发
-		p.hub.msgQueue <- &Msg{from: clientFlag, message: message}
+		p.hub.msgQueue <- &Msg{from: clientFlag, message: message, err: errchan}
+		if <-errchan != nil {
+			st = wire.AckStateFail //message send failed
+		}
 	}
 
 	// message ack
@@ -255,6 +259,7 @@ func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*Clie
 type Msg struct {
 	from    byte
 	message []byte
+	err     chan error
 }
 
 // type saveMessage struct {
@@ -686,7 +691,10 @@ func (h *Hub) messageQueueHandler() {
 	for {
 		select {
 		case msg := <-h.msgQueue:
-			h.messageLog.Write(msg.message)
+			err := h.messageLog.Write(msg.message)
+			if msg.err != nil {
+				msg.err <- err // error or nil
+			}
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-h.msgRelayDone:
 			// log.Printf("message %v relayed \n", ID)
