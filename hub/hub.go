@@ -770,7 +770,10 @@ func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 		if clen == 0 {
 			return header, nil
 		}
-		log.Println("group message to clients:", clen)
+		if clen < 30 {
+			log.Println("group message to clients:", clients)
+		}
+
 		for _, clientID := range clients {
 			if client, ok := h.clientPeers[clientID]; ok {
 				client.PushMessage(msg.message, nil)
