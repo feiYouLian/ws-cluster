@@ -178,7 +178,6 @@ func (p *ClientPeer) OnMessage(message []byte) error {
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	log.Printf("client %v disconnect", p.Peer.ID)
 	p.hub.unregister <- &delPeer{peer: p, done: nil}
 	return nil
 }
@@ -626,6 +625,8 @@ func (h *Hub) peerHandler() {
 				h.clientPeers[peer.entity.ID] = peer
 				h.clientCache.AddClient(peer.entity)
 				peerRegistAck(peer)
+
+				log.Printf("client %v connected", peer.ID)
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				h.serverPeers[peer.entity.ID] = peer
@@ -645,7 +646,7 @@ func (h *Hub) peerHandler() {
 					delete(h.clientPeers, peer.entity.ID)
 					h.clientCache.DelClient(peer.entity.ID)
 					peer.Close()
-					log.Printf("client %v disconnected", peer.Peer.ID)
+					log.Printf("client %v disconnected", peer.ID)
 				}
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
@@ -653,7 +654,7 @@ func (h *Hub) peerHandler() {
 					delete(h.serverPeers, peer.entity.ID)
 					delete(h.ServerSelf.OutServers, peer.entity.ID)
 					peer.Close()
-					log.Printf("server %v disconnected", peer.Peer.ID)
+					log.Printf("server %v disconnected", peer.ID)
 				}
 			}
 			if p.done != nil {
