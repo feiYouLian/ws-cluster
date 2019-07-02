@@ -371,6 +371,10 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		httpSendMsgHandler(hub, w, r)
 	})
 
+	http.HandleFunc("/q/online", func(w http.ResponseWriter, r *http.Request) {
+		httpQueryClientOnlineHandler(hub, w, r)
+	})
+
 	go func() {
 		listenIP := cfg.Server.Addr
 		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen))
@@ -494,6 +498,16 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	hub.msgQueue <- &Msg{from: clientFlag, message: buf.Bytes()}
 	fmt.Fprint(w, "ok")
+}
+
+// 处理 http 过来的消息发送
+func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if p, ok := hub.clientPeers[id]; ok {
+		fmt.Fprint(w, p.entity.LoginAt)
+		return
+	}
+	fmt.Fprint(w, 0)
 }
 
 func checkDigest(secret, text, digest string) bool {
