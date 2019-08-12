@@ -235,12 +235,15 @@ func bindServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*Ser
 }
 
 func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+	peerID := fmt.Sprintf("C%v@%v", client.ID, time.Now().UnixNano())
+	client.PeerID = peerID
+
 	clientPeer := &ClientPeer{
 		hub:    h,
 		entity: client,
 	}
 
-	peer := peer.NewPeer(fmt.Sprintf("C%v@%v", client.ID, time.Now().UnixNano()), &peer.Config{
+	peer := peer.NewPeer(peerID, &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
@@ -630,7 +633,7 @@ func (h *Hub) peerHandler() {
 					client, _ := h.clientCache.GetClient(peer.entity.ID)
 					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
 					if client != nil {
-						buf, _ := wire.MakeKillMessage(0, peer.entity.ID, peer.ID)
+						buf, _ := wire.MakeKillMessage(0, peer.entity.ID, peer.entity.PeerID)
 						if server, ok := h.serverPeers[client.ServerID]; ok {
 							server.PushMessage(buf, nil)
 						}
@@ -777,27 +780,32 @@ func (h *Hub) messageRelay(msg *Msg) (*wire.MessageHeader, error) {
 				serverpeer.PushMessage(msg.message, nil)
 			}
 		}
-		// 读取群用户列表。转发
-		clients := h.groupCache.GetGroupMembers(group)
-
-		clen := len(clients)
-		if clen == 0 {
-			return header, nil
-		}
-		if clen < 30 {
-			log.Println("group message to clients:", clients)
-		}
-
-		for _, clientID := range clients {
-			if client, ok := h.clientPeers[clientID]; ok {
-				client.PushMessage(msg.message, nil)
-			} else {
-				// 如果发现用户不存在就清理掉
-				h.groupCache.Leave(group, clientID)
-			}
-		}
+		// 消息异步发送到群中所有用户
+		go h.sendToGroup(group, msg.message)
 	}
 	return header, nil
+}
+
+func (h *Hub) sendToGroup(group string, message []byte) {
+	// 读取群用户列表。转发
+	clients := h.groupCache.GetGroupMembers(group)
+
+	clen := len(clients)
+	if clen == 0 {
+		return
+	}
+	if clen < 30 {
+		log.Println("group message to clients:", clients)
+	}
+
+	for _, clientID := range clients {
+		if client, ok := h.clientPeers[clientID]; ok {
+			client.PushMessage(message, nil)
+		} else {
+			// 如果发现用户不存在就清理掉
+			h.groupCache.Leave(group, clientID)
+		}
+	}
 }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {

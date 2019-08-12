@@ -6,7 +6,9 @@ package wire
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
+	"log"
 )
 
 var (
@@ -14,6 +16,8 @@ var (
 	// quite long.
 	littleEndian = binary.LittleEndian
 )
+
+type string64 [64]byte
 
 // ReadUint8 从 reader 中读取一个 uint8
 func ReadUint8(r io.Reader) (uint8, error) {
@@ -114,4 +118,47 @@ func WriteBytes(w io.Writer, buf []byte) error {
 		return err
 	}
 	return nil
+}
+
+// ErrIsNotAscll is not ascall error
+var ErrIsNotAscll = errors.New("ErrIsNotAscll")
+
+// WriteAscllString WriteAscllString
+func WriteAscllString(w io.Writer, str string, capacity int) error {
+	buf := make([]byte, capacity)
+	for i, ch := range str {
+		if ch > 127 {
+			return ErrIsNotAscll
+		}
+		buf[i] = byte(ch)
+	}
+	log.Print(buf)
+	_, err := w.Write(buf)
+	return err
+}
+
+// ReadAscllString readAscllString
+func ReadAscllString(r io.Reader, str string, capacity int) (string, error) {
+	buf := make([]byte, capacity)
+	_, err := r.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	log.Print(buf)
+	i := 0
+	for ; i < len(buf); i++ {
+		if buf[i] == 0 {
+			break
+		}
+	}
+	return string(buf[0:i]), err
+}
+
+func (s64 *string64) String() string {
+	for i := range s64 {
+		if s64[i] == 0 {
+			return string(s64[0:i])
+		}
+	}
+	return ""
 }

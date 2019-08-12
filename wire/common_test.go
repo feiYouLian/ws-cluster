@@ -6,6 +6,7 @@ package wire
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"reflect"
 	"testing"
@@ -45,4 +46,18 @@ func TestWriteInt8(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteAscllString(t *testing.T) {
+	w := &bytes.Buffer{}
+	if err := WriteAscllString(w, "aA1", 32); err != nil {
+		t.Error(err)
+	}
+
+	str, err := ReadAscllString(w, "aA1", 32)
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Printf("__%v__\n", str)
+
 }

@@ -7,6 +7,7 @@ import (
 // Client 是一个具体的客户端身份对象
 type Client struct {
 	ID       string
+	PeerID   string //全局唯一id.
 	ServerID uint64
 	LoginAt  uint32 //second
 }
