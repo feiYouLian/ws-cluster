@@ -34,13 +34,14 @@ type Server struct {
 
 // ChatMsg 聊消息
 type ChatMsg struct {
-	ID       uint64 `xorm:"pk autoincr 'id'"`
-	Domain   uint32
-	From     string
-	Scope    uint8
-	To       string
-	Type     uint8  //msg type
-	Text     string `xorm:"varchar(1024)"`
-	Extra    string
-	CreateAt time.Time
+	ID         uint64 `xorm:"pk autoincr 'id'"`
+	FromDomain uint32
+	ToDomain   uint32
+	From       string
+	Scope      uint8
+	To         string
+	Type       uint8  //msg type
+	Text       string `xorm:"varchar(1024)"`
+	Extra      string
+	CreateAt   time.Time
 }

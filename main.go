@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-xorm/xorm"
-
 	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
 	"github.com/ws-cluster/hub"
@@ -28,7 +27,6 @@ func main() {
 	log.Println("system start up")
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	// read config
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -48,7 +46,7 @@ func main() {
 	cfg.MessageStore = database.NewMysqlMessageStore(engine)
 
 	var cache config.Cache
-	cache.Group = database.NewMemGroupCache()
+
 	if cfg.Server.Mode == config.ModeCluster {
 		redis, err := database.InitRedis(cfg.Redis.IP, cfg.Redis.Port, cfg.Redis.Password, cfg.Redis.Db)
 		if err != nil {

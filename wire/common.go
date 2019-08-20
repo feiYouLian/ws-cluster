@@ -39,6 +39,8 @@ var AddrMap = map[byte]rune{
 var (
 	// ErrAddrOverflow ErrAddrOverflow
 	ErrAddrOverflow = errors.New("address is overflow")
+	// ErrInvaildAddress ErrInvaildAddress
+	ErrInvaildAddress = errors.New("address is invaild")
 )
 
 // Addr Address
@@ -65,6 +67,9 @@ func NewAddr(Typ byte, domain uint32, address string) (*Addr, error) {
 // NewPeerAddr new a peer address
 func NewPeerAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 3)
+	if len(addrs) != 3 {
+		return nil, ErrInvaildAddress
+	}
 	domain, _ := strconv.Atoi(addrs[1])
 	return NewAddr(AddrPeer, uint32(domain), addrs[2])
 }

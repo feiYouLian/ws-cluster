@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -68,14 +67,13 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	// upgrade
 	conn, err := hub.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		handleHTTPErr(w, err)
 		return
 	}
 
 	peerAddr, err := wire.NewPeerAddr(addr)
 	if err != nil {
-		w.Write([]byte(err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
+		handleHTTPErr(w, err)
 		return
 	}
 
@@ -87,9 +85,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		log.Println(err)
-		w.Write([]byte(err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
+		handleHTTPErr(w, err)
 		return
 	}
 	// 注册节点到服务器
@@ -144,36 +140,31 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	// fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
 
-	header := &wire.MessageHeader{
-		ID:      uint32(time.Now().Unix()),
-		Msgtype: wire.MsgTypeChat,
-		Scope:   body.Scope,
-		To:      body.To,
-	}
-	msg, err := wire.MakeEmptyMessage(header)
+	msg, err := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
+		Text:  body.Text,
+		Type:  body.Type,
+		Extra: body.Extra,
+	})
 	if err != nil {
 		fmt.Fprint(w, err.Error())
 		return
 	}
-	msgchat := msg.(*wire.Msgchat)
-	msgchat.Text = body.Text
-	msgchat.Type = body.Type
-	msgchat.Extra = body.Extra
-	msgchat.From = body.From
-	buf := &bytes.Buffer{}
-	err = wire.WriteMessage(buf, msg)
-	if err != nil {
-		fmt.Fprint(w, err.Error())
-		return
-	}
-	hub.msgQueue <- &Msg{from: clientFlag, message: buf.Bytes()}
+	msg.Header.Source, _ = wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
+	msg.Header.Dest, _ = wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
+
+	hub.msgQueue <- &Msg{from: clientFlag, message: msg}
 	fmt.Fprint(w, "ok")
 }
 
 // 处理 http 过来的消息发送
 func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	if p, ok := hub.clientPeers[id]; ok {
+	addrstr := r.URL.Query().Get("addr")
+	addr, err := wire.NewPeerAddr(addrstr)
+	if err != nil {
+		fmt.Fprint(w, err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	if p, ok := hub.clientPeers[*addr]; ok {
 		fmt.Fprint(w, p.entity.LoginAt)
 		return
 	}
@@ -185,4 +176,9 @@ func checkDigest(secret, text, digest string) bool {
 	io.WriteString(h, text)
 	io.WriteString(h, secret)
 	return digest == hex.EncodeToString(h.Sum(nil))
+}
+
+func handleHTTPErr(w http.ResponseWriter, err error) {
+	fmt.Fprint(w, err.Error())
+	w.WriteHeader(http.StatusBadRequest)
 }

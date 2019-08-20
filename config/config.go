@@ -83,7 +83,6 @@ type Config struct {
 type Cache struct {
 	Client database.ClientCache
 	Server database.ServerCache
-	Group  database.GroupCache
 }
 
 // LoadConfig LoadConfig

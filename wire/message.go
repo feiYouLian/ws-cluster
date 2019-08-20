@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"fmt"
 	"io"
 )
 
@@ -34,8 +33,8 @@ type Protocol interface {
 
 // Header is Message Header
 type Header struct {
-	Source  Addr   //source address
-	Dest    Addr   //destination address
+	Source  *Addr  //source address
+	Dest    *Addr  //destination address
 	Seq     uint32 //消息序列号，peer唯一
 	AckSeq  uint32 //应答消息序列号
 	Command uint8  //命令类型
@@ -175,25 +174,35 @@ func (m *Message) Encode(w io.Writer) error {
 // }
 
 // MakeEmptyMessage 创建一个空的消息体
-func MakeEmptyMessage(Command uint8) (*Message, error) {
-	var msg Protocol
-	switch Command {
-	case MsgTypeChat:
-		msg = &Msgchat{}
-	case MsgTypeGroupInOut:
-		msg = &MsgGroupInOut{}
-	case MsgTypeKill:
-		msg = &MsgKill{}
-	case MsgTypeLoginAck:
-		msg = &MsgLoginAck{}
-	default:
-		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
-	}
+// func MakeEmptyMessage(Command uint8) (*Message, error) {
+// 	var msg Protocol
+// 	switch Command {
+// 	case MsgTypeChat:
+// 		msg = &Msgchat{}
+// 	case MsgTypeGroupInOut:
+// 		msg = &MsgGroupInOut{}
+// 	case MsgTypeKill:
+// 		msg = &MsgKill{}
+// 	case MsgTypeLoginAck:
+// 		msg = &MsgLoginAck{}
+// 	default:
+// 		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
+// 	}
+// 	return &Message{
+// 		Header: &Header{
+// 			Command: Command,
+// 		},
+// 		Body: msg,
+// 	}, nil
+// }
+
+// MakeEmptyHeaderMessage Make a Message which header is empty
+func MakeEmptyHeaderMessage(Command uint8, body Protocol) (*Message, error) {
 	return &Message{
 		Header: &Header{
 			Command: Command,
 		},
-		Body: msg,
+		Body: body,
 	}, nil
 }
 
