@@ -29,7 +29,7 @@ const (
 // MessageListeners 消息监听
 type MessageListeners struct {
 	// OnGetAddr is invoked when a peer receives a getaddr bitcoin message.
-	OnMessage func(msg []byte) error
+	OnMessage func(msg *wire.Message) error
 
 	OnDisconnect func() error
 }
@@ -50,7 +50,7 @@ type Config struct {
 }
 
 type outMessage struct {
-	message []byte
+	message *wire.Message
 	done    chan<- struct{}
 }
 
@@ -67,10 +67,12 @@ type Peer struct {
 	timeConnected time.Time
 
 	connected int32
+
+	autoSeq uint32
 }
 
 // NewPeer 创建一个新的节点
-func NewPeer(id string, config *Config) *Peer {
+func NewPeer(ID string, config *Config) *Peer {
 	if config.WriteWait == 0 {
 		config.WriteWait = defaultWriteWait
 	}
@@ -88,7 +90,7 @@ func NewPeer(id string, config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
-		ID:        id,
+		ID:        ID,
 		config:    config,
 		outQueue:  make(chan outMessage, 1),
 		sendQueue: make(chan outMessage, 1),
@@ -144,22 +146,34 @@ func (p *Peer) inMessageHandler() {
 
 		// 从消息中取出多条单个消息一一处理
 		buf := bytes.NewReader(message)
-		mlen := len(message)
-		for i := 0; i < mlen; {
-			msg, err := wire.ReadBytes(buf)
+		for {
+			message := new(wire.Message)
+			err := message.Decode(buf)
 			if err != nil {
-				log.Println(err)
-				// no more message
 				break
 			}
-			i = i + 4 + len(msg)
-			go func(message []byte) {
-				err = p.config.Listeners.OnMessage(msg)
-				if err != nil {
-					log.Println(err)
-				}
-			}(msg)
+			err = p.config.Listeners.OnMessage(message)
+			if err != nil {
+				log.Println(err)
+			}
+
 		}
+		// mlen := len(message)
+		// for i := 0; i < mlen; {
+		// 	msg, err := wire.ReadBytes(buf)
+		// 	if err != nil {
+		// 		log.Println(err)
+		// 		// no more message
+		// 		break
+		// 	}
+		// 	i = i + 4 + len(msg)
+		// 	go func(message []byte) {
+		// 		err = p.config.Listeners.OnMessage(msg)
+		// 		if err != nil {
+		// 			log.Println(err)
+		// 		}
+		// 	}(msg)
+		// }
 	}
 }
 
@@ -184,6 +198,11 @@ Loop:
 	for {
 		select {
 		case msg, _ := <-p.outQueue:
+			header := msg.message.Header
+			if header.Seq == 0 {
+				p.autoSeq++
+				header.Seq = p.autoSeq
+			}
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-p.sendDone:
 			next := pendingMsgs.Front()
@@ -225,14 +244,16 @@ Loop:
 				log.Println(err)
 				return
 			}
-			wire.WriteBytes(w, outMessage.message)
-			if err := w.Close(); err != nil {
-				log.Println(err)
-				return
-			}
+
+			outMessage.message.Encode(w)
 
 			if outMessage.done != nil {
 				outMessage.done <- struct{}{}
+			}
+
+			if err := w.Close(); err != nil {
+				log.Println(err)
+				return
 			}
 
 			p.sendDone <- struct{}{}
@@ -249,19 +270,19 @@ Loop:
 	}
 }
 
-// SendMessage send a message to peer
-func (p *Peer) SendMessage(message wire.Message, doneChan chan<- struct{}) error {
-	buf := &bytes.Buffer{}
-	err := wire.WriteMessage(buf, message)
-	if err != nil {
-		return err
-	}
-	p.PushMessage(buf.Bytes(), doneChan)
-	return nil
-}
+// // SendMessage send a message to peer
+// func (p *Peer) SendMessage(message wire.Message, doneChan chan<- struct{}) error {
+// 	buf := &bytes.Buffer{}
+// 	err := wire.WriteMessage(buf, message)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	p.PushMessage(buf.Bytes(), doneChan)
+// 	return nil
+// }
 
 // PushMessage 把消息写到队列中，等待处理
-func (p *Peer) PushMessage(message []byte, doneChan chan<- struct{}) {
+func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- struct{}) {
 	if !p.IsConnected() {
 		if doneChan != nil {
 			go func() {

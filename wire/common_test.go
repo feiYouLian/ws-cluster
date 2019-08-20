@@ -60,4 +60,38 @@ func TestWriteAscllString(t *testing.T) {
 	}
 	fmt.Printf("__%v__\n", str)
 
+	fmt.Println(AddrBroadcast)
+}
+
+func TestNewAddr(t *testing.T) {
+	// type args struct {
+	// 	Typ     byte
+	// 	domain  uint32
+	// 	address string
+	// }
+	// tests := []struct {
+	// 	name    string
+	// 	args    args
+	// 	want    *Addr
+	// 	wantErr bool
+	// }{
+	// 	// TODO: Add test cases.
+
+	// }
+	// for _, tt := range tests {
+	// 	t.Run(tt.name, func(t *testing.T) {
+	// 		got, err := NewAddr(tt.args.Typ, tt.args.domain, tt.args.address)
+	// 		if (err != nil) != tt.wantErr {
+	// 			t.Errorf("NewAddr() error = %v, wantErr %v", err, tt.wantErr)
+	// 			return
+	// 		}
+	// 		if !reflect.DeepEqual(got, tt.want) {
+	// 			t.Errorf("NewAddr() = %v, want %v", got, tt.want)
+	// 		}
+	// 	})
+	// }
+
+	got, _ := NewAddr(AddrPeer, 1888, "abc33@##$1111")
+	fmt.Println(got.String())
+	fmt.Println(got.Type(), got.Len(), got.Domain(), got.Address())
 }

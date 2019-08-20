@@ -3,29 +3,18 @@ package hub
 import (
 	"bytes"
 	"container/list"
-	"crypto/md5"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/ws-cluster/filelog"
-
-	"github.com/ws-cluster/config"
-
-	"github.com/ws-cluster/peer"
-	"github.com/ws-cluster/wire"
-
-	"github.com/ws-cluster/database"
-
 	"github.com/gorilla/websocket"
+	"github.com/ws-cluster/config"
+	"github.com/ws-cluster/database"
+	"github.com/ws-cluster/filelog"
+	"github.com/ws-cluster/wire"
 )
 
 const (
@@ -40,227 +29,10 @@ const (
 	peerTypeServer = 2
 )
 
-// ServerPeer 代表一个服务器节点，每个服务器节点都会建立与其它服务器节点的接连，
-// 这个对象用于处理跨服务节点消息收发。
-type ServerPeer struct {
-	*peer.Peer
-	hub            *Hub
-	entity         *database.Server
-	isOutServer    bool
-	reconnectTimes int
-}
-
-// OnMessage 接收消息
-func (p *ServerPeer) OnMessage(message []byte) error {
-	header, err := wire.ReadHeader(bytes.NewReader(message))
-	if err != nil {
-		return err
-	}
-	if header.Scope != wire.ScopeNull {
-		p.hub.msgQueue <- &Msg{from: serverFlag, message: message}
-	}
-	return nil
-}
-
-// OnDisconnect 对方断开接连
-func (p *ServerPeer) OnDisconnect() error {
-	// log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
-	if !p.isOutServer { //如果不是连接出去服务
-		p.hub.unregister <- &delPeer{peer: p}
-		return nil
-	}
-
-	// 尝试重连
-	for p.reconnectTimes < reconnectTimes {
-		server, _ := p.hub.serverCache.GetServer(p.entity.ID)
-		// 如果服务器列表中不存在，说明服务宕机了
-		if server == nil {
-			p.hub.unregister <- &delPeer{peer: p}
-			return nil
-		}
-		p.reconnectTimes++
-		if err := p.connect(); err == nil {
-			// 重连成功
-			return nil
-		}
-
-		time.Sleep(time.Second * 3)
-	}
-
-	p.hub.unregister <- &delPeer{peer: p}
-	return nil
-}
-
-func (p *ServerPeer) connect() error {
-	serverSelf := p.hub.ServerSelf
-
-	// 生成加密摘要
-	h := md5.New()
-	io.WriteString(h, fmt.Sprintf("%v%v%v", serverSelf.ID, serverSelf.IP, serverSelf.Port))
-	io.WriteString(h, p.hub.config.Server.Secret)
-	digest := hex.EncodeToString(h.Sum(nil))
-
-	header := http.Header{}
-	header.Add("id", fmt.Sprint(serverSelf.ID))
-	header.Add("ip", serverSelf.IP)
-	header.Add("port", strconv.Itoa(serverSelf.Port))
-	header.Add("digest", digest)
-
-	server := p.entity
-	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", server.IP, server.Port), Path: "/server"}
-	// log.Printf("connecting to %s", u.String())
-
-	dialar := &websocket.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
-		HandshakeTimeout: 3 * time.Second,
-	}
-
-	conn, _, err := dialar.Dial(u.String(), header)
-	if err != nil {
-		log.Println("dial:", err)
-		return err
-	}
-	p.reconnectTimes = 0
-	p.SetConnection(conn)
-	return nil
-}
-
-// ClientPeer 代表一个客户端节点，消息收发的处理逻辑
-type ClientPeer struct {
-	*peer.Peer
-	hub    *Hub
-	entity *database.Client
-}
-
-// OnMessage 接收消息
-func (p *ClientPeer) OnMessage(message []byte) error {
-	header, err := wire.ReadHeader(bytes.NewReader(message))
-	if err != nil {
-		return err
-	}
-	st := wire.AckStateSent
-
-	// 处理消息逻辑
-	switch header.Msgtype {
-	case wire.MsgTypeGroupInOut:
-		msg, err := wire.ReadMessage(bytes.NewReader(message))
-		if err != nil {
-			return err
-		}
-		msgGroup := msg.(*wire.MsgGroupInOut)
-
-		switch msgGroup.InOut {
-		case wire.GroupIn:
-			p.hub.groupCache.JoinMany(p.entity.ID, msgGroup.Groups)
-			log.Printf("[%v]join groups: %v", p.entity.ID, msgGroup.Groups)
-		case wire.GroupOut:
-			p.hub.groupCache.LeaveMany(p.entity.ID, msgGroup.Groups)
-			log.Printf("[%v]leave groups: %v", p.entity.ID, msgGroup.Groups)
-		}
-
-	}
-
-	if header.Scope != wire.ScopeNull && st != wire.AckStateFail {
-		log.Println("message forward to hub", header)
-		errchan := make(chan error)
-		// 消息转发
-		p.hub.msgQueue <- &Msg{from: clientFlag, message: message, err: errchan}
-		if <-errchan != nil {
-			st = wire.AckStateFail //message send failed
-		}
-	}
-
-	// message ack
-	ackmsg, _ := wire.MakeAckMessage(header.ID, st)
-	p.PushMessage(ackmsg, nil)
-	return nil
-}
-
-// OnDisconnect 接连断开
-func (p *ClientPeer) OnDisconnect() error {
-	p.hub.unregister <- &delPeer{peer: p, done: nil}
-	return nil
-}
-
-// newServerPeer 主动去连接另一台服务节点器
-func newServerPeer(h *Hub, server *database.Server) (*ServerPeer, error) {
-
-	serverPeer := &ServerPeer{
-		hub:         h,
-		entity:      server,
-		isOutServer: true,
-	}
-
-	peer := peer.NewPeer(fmt.Sprintf("S%v", server.ID),
-		&peer.Config{
-			Listeners: &peer.MessageListeners{
-				OnMessage:    serverPeer.OnMessage,
-				OnDisconnect: serverPeer.OnDisconnect,
-			},
-			MaxMessageSize: h.config.Peer.MaxMessageSize,
-		})
-
-	serverPeer.Peer = peer
-	// 主动进行连接
-	if err := serverPeer.connect(); err != nil {
-		return nil, err
-	}
-
-	return serverPeer, nil
-}
-
-// bindServerPeer 处理其它服务器节点过来的连接
-func bindServerPeer(h *Hub, conn *websocket.Conn, server *database.Server) (*ServerPeer, error) {
-
-	serverPeer := &ServerPeer{
-		hub:         h,
-		entity:      server,
-		isOutServer: false,
-	}
-
-	peer := peer.NewPeer(fmt.Sprintf("S%v", server.ID),
-		&peer.Config{
-			Listeners: &peer.MessageListeners{
-				OnMessage:    serverPeer.OnMessage,
-				OnDisconnect: serverPeer.OnDisconnect,
-			},
-			MaxMessageSize: h.config.Peer.MaxMessageSize,
-		})
-
-	serverPeer.Peer = peer
-	// 被动接受的连接
-	serverPeer.SetConnection(conn)
-
-	return serverPeer, nil
-}
-
-func newClientPeer(h *Hub, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
-	peerID := fmt.Sprintf("C%v@%v", client.ID, time.Now().UnixNano())
-	client.PeerID = peerID
-
-	clientPeer := &ClientPeer{
-		hub:    h,
-		entity: client,
-	}
-
-	peer := peer.NewPeer(peerID, &peer.Config{
-		Listeners: &peer.MessageListeners{
-			OnMessage:    clientPeer.OnMessage,
-			OnDisconnect: clientPeer.OnDisconnect,
-		},
-		MaxMessageSize: h.config.Peer.MaxMessageSize,
-	})
-
-	clientPeer.Peer = peer
-	clientPeer.SetConnection(conn)
-
-	return clientPeer, nil
-}
-
 // Msg to hub
 type Msg struct {
 	from    byte
-	message []byte
+	message *wire.Message
 	err     chan error
 }
 
@@ -290,9 +62,10 @@ type Hub struct {
 	serverCache database.ServerCache
 
 	// clientPeers 缓存客户端节点数据
-	clientPeers map[string]*ClientPeer
+	clientPeers map[wire.Addr]*ClientPeer
 	// serverPeers 缓存服务端节点数据
 	serverPeers map[uint64]*ServerPeer
+	groups      map[wire.Addr]*list.List
 
 	messageLog *filelog.FileLog
 	loginLog   *filelog.FileLog
@@ -300,8 +73,9 @@ type Hub struct {
 	register   chan *addPeer
 	unregister chan *delPeer
 
-	msgRelay     chan *Msg
+	commandChan  chan *wire.Message
 	msgQueue     chan *Msg
+	msgRelay     chan *Msg
 	msgRelayDone chan uint32
 	quit         chan struct{}
 }
@@ -349,175 +123,22 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		clientCache:  clientCache,
 		serverCache:  cfg.Cache.Server,
 		groupCache:   cfg.Cache.Group,
-		clientPeers:  make(map[string]*ClientPeer, 1000),
+		clientPeers:  make(map[wire.Addr]*ClientPeer, 1000),
 		serverPeers:  make(map[uint64]*ServerPeer, 10),
 		register:     make(chan *addPeer, 1),
 		unregister:   make(chan *delPeer, 1),
 		msgQueue:     make(chan *Msg, 1),
 		msgRelay:     make(chan *Msg, 1),
 		msgRelayDone: make(chan uint32, 1),
+		commandChan:  make(chan *wire.Message, 1000),
 
 		messageLog: messageLog,
 		quit:       make(chan struct{}),
 	}
 
-	// regist a service for client
-	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
-		handleClientWebSocket(hub, w, r)
-	})
-	// regist a service for server
-	http.HandleFunc("/server", func(w http.ResponseWriter, r *http.Request) {
-		handleServerWebSocket(hub, w, r)
-	})
+	go httplisten(hub, &cfg.Server)
 
-	http.HandleFunc("/msg/send", func(w http.ResponseWriter, r *http.Request) {
-		httpSendMsgHandler(hub, w, r)
-	})
-
-	http.HandleFunc("/q/online", func(w http.ResponseWriter, r *http.Request) {
-		httpQueryClientOnlineHandler(hub, w, r)
-	})
-
-	go func() {
-		listenIP := cfg.Server.Addr
-		log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen))
-		err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, cfg.Server.Listen), nil)
-
-		if err != nil {
-			log.Println("ListenAndServe: ", err)
-			return
-		}
-	}()
 	return hub, nil
-}
-
-// 处理来自客户端节点的连接
-func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	clientID := q.Get("id")
-	nonce := q.Get("nonce")
-	digest := q.Get("digest")
-
-	if clientID == "" || nonce == "" || digest == "" {
-		// 错误处理，断开
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v", clientID, nonce), digest) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	// upgrade
-	conn, err := hub.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	clientPeer, err := newClientPeer(hub, conn, &database.Client{
-		ID:       clientID,
-		ServerID: hub.ServerID,
-		LoginAt:  uint32(time.Now().Unix()),
-	})
-
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	// 注册节点到服务器
-	hub.register <- &addPeer{peer: clientPeer, done: nil}
-	log.Printf("client %v connecting from %v", clientID, r.RemoteAddr)
-}
-
-// 处理来自服务器节点的连接
-func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	ID, _ := strconv.ParseUint(r.Header.Get("id"), 0, 64)
-	IP := r.Header.Get("ip")
-	Port, _ := strconv.Atoi(r.Header.Get("port"))
-	digest := r.Header.Get("digest")
-
-	if ID == 0 || IP == "" || Port == 0 {
-		// 错误处理，断开
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", ID, IP, Port), digest) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	conn, err := hub.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	serverPeer, err := bindServerPeer(hub, conn, &database.Server{
-		ID:   ID,
-		IP:   IP,
-		Port: Port,
-	})
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	hub.register <- &addPeer{peer: serverPeer, done: nil}
-
-	log.Printf("server %v connecting from %v", ID, r.RemoteAddr)
-}
-
-// 处理 http 过来的消息发送
-func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	var body database.ChatMsg
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	// fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
-
-	header := &wire.MessageHeader{
-		ID:      uint32(time.Now().Unix()),
-		Msgtype: wire.MsgTypeChat,
-		Scope:   body.Scope,
-		To:      body.To,
-	}
-	msg, err := wire.MakeEmptyMessage(header)
-	if err != nil {
-		fmt.Fprint(w, err.Error())
-		return
-	}
-	msgchat := msg.(*wire.Msgchat)
-	msgchat.Text = body.Text
-	msgchat.Type = body.Type
-	msgchat.Extra = body.Extra
-	msgchat.From = body.From
-	buf := &bytes.Buffer{}
-	err = wire.WriteMessage(buf, msg)
-	if err != nil {
-		fmt.Fprint(w, err.Error())
-		return
-	}
-	hub.msgQueue <- &Msg{from: clientFlag, message: buf.Bytes()}
-	fmt.Fprint(w, "ok")
-}
-
-// 处理 http 过来的消息发送
-func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	if p, ok := hub.clientPeers[id]; ok {
-		fmt.Fprint(w, p.entity.LoginAt)
-		return
-	}
-	fmt.Fprint(w, 0)
-}
-
-func checkDigest(secret, text, digest string) bool {
-	h := md5.New()
-	io.WriteString(h, text)
-	io.WriteString(h, secret)
-	return digest == hex.EncodeToString(h.Sum(nil))
 }
 
 // Run start all handlers
@@ -526,6 +147,7 @@ func (h *Hub) Run() {
 	go h.peerHandler()
 	go h.messageHandler()
 	go h.messageQueueHandler()
+	go h.commandHandler()
 	go h.pingHandler()
 
 	// 连接到其它服务器节点,并且对放开放服务
@@ -624,24 +246,29 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				if p, ok := h.clientPeers[peer.entity.ID]; ok {
+				if oldpeer, ok := h.clientPeers[peer.addr]; ok {
 					// 如果节点已经登陆，就把前一个 peer踢下线
-					buf, _ := wire.MakeKillMessage(0, p.entity.ID, p.ID)
-					fmt.Printf("kill client:%v \n", p.Peer.ID)
-					p.PushMessage(buf, nil)
+					msg, _ := wire.MakeEmptyMessage(wire.MsgTypeKill)
+					msgkill := msg.Body.(*wire.MsgKill)
+					msgkill.PeerID = oldpeer.ID
+
+					fmt.Printf("kill client:%v \n", oldpeer.ID)
+					oldpeer.PushMessage(msg, nil)
 				} else {
 					client, _ := h.clientCache.GetClient(peer.entity.ID)
 					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
 					if client != nil {
-						buf, _ := wire.MakeKillMessage(0, peer.entity.ID, peer.entity.PeerID)
+						msg, _ := wire.MakeEmptyMessage(wire.MsgTypeKill)
+						msg.Header.Dest = peer.addr // same addr
+						msgkill := msg.Body.(*wire.MsgKill)
+						msgkill.PeerID = client.PeerID
 						if server, ok := h.serverPeers[client.ServerID]; ok {
-							server.PushMessage(buf, nil)
+							server.PushMessage(msg, nil)
 						}
 					}
 				}
-				h.clientPeers[peer.entity.ID] = peer
+				h.clientPeers[peer.addr] = peer
 				h.clientCache.AddClient(peer.entity)
-				peerRegistAck(peer)
 
 				log.Printf("client %v connected", peer.ID)
 			case *ServerPeer:
@@ -656,13 +283,12 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				if p, ok := h.clientPeers[peer.entity.ID]; ok {
+				if p, ok := h.clientPeers[peer.addr]; ok {
 					if p.Peer.ID != peer.Peer.ID {
 						continue
 					}
-					delete(h.clientPeers, peer.entity.ID)
+					delete(h.clientPeers, peer.addr)
 					h.clientCache.DelClient(peer.entity.ID)
-					peer.Close()
 					log.Printf("client %v disconnected", peer.ID)
 				}
 			case *ServerPeer:
@@ -670,7 +296,6 @@ func (h *Hub) peerHandler() {
 				if _, ok := h.serverPeers[peer.entity.ID]; ok {
 					delete(h.serverPeers, peer.entity.ID)
 					delete(h.ServerSelf.OutServers, peer.entity.ID)
-					peer.Close()
 					log.Printf("server %v disconnected", peer.ID)
 				}
 			}
@@ -682,10 +307,10 @@ func (h *Hub) peerHandler() {
 }
 
 // login ack ,return a peerId to client
-func peerRegistAck(peer *ClientPeer) {
-	buf, _ := wire.MakeLoginAckMessage(0, peer.ID)
-	peer.PushMessage(buf, nil)
-}
+// func peerRegistAck(peer *ClientPeer) {
+// 	buf, _ := wire.MakeLoginAckMessage(0, peer.ID)
+// 	peer.PushMessage(buf, nil)
+// }
 
 // 处理消息queue
 func (h *Hub) messageQueueHandler() {
@@ -709,7 +334,9 @@ func (h *Hub) messageQueueHandler() {
 	for {
 		select {
 		case msg := <-h.msgQueue:
-			err := h.messageLog.Write(msg.message)
+			buf := &bytes.Buffer{}
+			msg.message.Encode(buf)
+			err := h.messageLog.Write(buf.Bytes())
 			if msg.err != nil {
 				msg.err <- err // error or nil
 			}
@@ -738,6 +365,33 @@ func (h *Hub) messageHandler() {
 			}
 			// log.Printf("message %v relaying \n", header.ID)
 			h.msgRelayDone <- header.ID
+		}
+	}
+}
+
+func (h *Hub) commandHandler() {
+	log.Println("start commandHandler")
+	for {
+		select {
+		case message := <-h.commandChan:
+			header := message.Header
+
+			// 处理消息逻辑
+			switch header.Command {
+			case wire.MsgTypeGroupInOut:
+				msgGroup := message.Body.(*wire.MsgGroupInOut)
+
+				switch msgGroup.InOut {
+				case wire.GroupIn:
+					groups
+					h.groupCache.JoinMany(header.Source.String(), msgGroup.Groups)
+					log.Printf("[%v]join groups: %v", p.entity.ID, msgGroup.Groups)
+				case wire.GroupOut:
+					h.groupCache.LeaveMany(p.entity.ID, msgGroup.Groups)
+					log.Printf("[%v]leave groups: %v", p.entity.ID, msgGroup.Groups)
+				}
+
+			}
 		}
 	}
 }

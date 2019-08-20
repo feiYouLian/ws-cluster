@@ -26,14 +26,16 @@ type Server struct {
 	IP   string
 	Port int
 	// ClientNum 在线人数
-	ClientNum  int
-	StartAt    int64
+	ClientNum int
+	StartAt   int64
+
 	OutServers map[uint64]string
 }
 
 // ChatMsg 聊消息
 type ChatMsg struct {
 	ID       uint64 `xorm:"pk autoincr 'id'"`
+	Domain   uint32
 	From     string
 	Scope    uint8
 	To       string

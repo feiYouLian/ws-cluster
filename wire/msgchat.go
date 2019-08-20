@@ -6,15 +6,14 @@ import (
 
 // Msgchat 聊天消息
 type Msgchat struct {
-	header *MessageHeader
-	From   string
-	Type   uint8 // 1: text 2: image
-	Text   string
-	Extra  string
+	From  string
+	Type  uint8 // 1: text 2: image
+	Text  string
+	Extra string
 }
 
-// decode decode
-func (m *Msgchat) decode(r io.Reader) error {
+// Decode Decode
+func (m *Msgchat) Decode(r io.Reader) error {
 	var err error
 	if m.From, err = ReadString(r); err != nil {
 		return err
@@ -32,8 +31,8 @@ func (m *Msgchat) decode(r io.Reader) error {
 	return nil
 }
 
-// encode encode
-func (m *Msgchat) encode(w io.Writer) error {
+// Encode Encode
+func (m *Msgchat) Encode(w io.Writer) error {
 	var err error
 	if err = WriteString(w, m.From); err != nil {
 		return err
@@ -48,9 +47,4 @@ func (m *Msgchat) encode(w io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-// Header 头信息
-func (m *Msgchat) Header() *MessageHeader {
-	return m.header
 }

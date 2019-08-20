@@ -14,13 +14,12 @@ const (
 
 // MsgGroupInOut 进入、退出 群
 type MsgGroupInOut struct {
-	header *MessageHeader
 	InOut  uint8 //1 in 0: out
 	Groups []string
 }
 
-// decode Decode
-func (m *MsgGroupInOut) decode(r io.Reader) error {
+// Decode Decode
+func (m *MsgGroupInOut) Decode(r io.Reader) error {
 	var err error
 	if m.InOut, err = ReadUint8(r); err != nil {
 		return err
@@ -33,8 +32,8 @@ func (m *MsgGroupInOut) decode(r io.Reader) error {
 	return nil
 }
 
-// encode Encode
-func (m *MsgGroupInOut) encode(w io.Writer) error {
+// Encode Encode
+func (m *MsgGroupInOut) Encode(w io.Writer) error {
 	var err error
 	if err = WriteUint8(w, m.InOut); err != nil {
 		return err
@@ -43,9 +42,4 @@ func (m *MsgGroupInOut) encode(w io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-// Header 头信息
-func (m *MsgGroupInOut) Header() *MessageHeader {
-	return &MessageHeader{m.header.ID, MsgTypeGroupInOut, 0, ""}
 }

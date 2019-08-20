@@ -7,8 +7,11 @@ package wire
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -17,7 +20,106 @@ var (
 	littleEndian = binary.LittleEndian
 )
 
-type string64 [64]byte
+const (
+	// AddrPeer peer address
+	AddrPeer = byte(1)
+	// AddrGroup group address
+	AddrGroup = byte(2)
+	// AddrBroadcast broadcast address
+	AddrBroadcast = byte(3)
+)
+
+// AddrMap addr byte to char
+var AddrMap = map[byte]rune{
+	AddrPeer:      'p',
+	AddrGroup:     'g',
+	AddrBroadcast: 'b',
+}
+
+var (
+	// ErrAddrOverflow ErrAddrOverflow
+	ErrAddrOverflow = errors.New("address is overflow")
+)
+
+// Addr Address
+// /  3 bit     / 5 bit   / 4 byte  / 27 byte /
+// / message type/ length   / domain / address /
+type Addr [32]byte
+
+// NewAddr new an Addr object
+func NewAddr(Typ byte, domain uint32, address string) (*Addr, error) {
+	addr := new(Addr)
+	addrBytes := []byte(address)
+	addrlen := len(addrBytes)
+	if addrlen > 27 {
+		return nil, ErrAddrOverflow
+	}
+	addr[0] = byte(Typ<<5) | byte(addrlen)
+	bs := make([]byte, 4)
+	littleEndian.PutUint32(bs, domain)
+	copy(addr[1:5], bs)
+	copy(addr[5:], addrBytes)
+	return addr, nil
+}
+
+// NewPeerAddr new a peer address
+func NewPeerAddr(addr string) (*Addr, error) {
+	addrs := strings.SplitN(addr, "/", 3)
+	domain, _ := strconv.Atoi(addrs[1])
+	return NewAddr(AddrPeer, uint32(domain), addrs[2])
+}
+
+// NewGroupAddr new a group address
+func NewGroupAddr(addr string) (*Addr, error) {
+	addrs := strings.SplitN(addr, "/", 3)
+	domain, _ := strconv.Atoi(addrs[1])
+	return NewAddr(AddrGroup, uint32(domain), addrs[2])
+}
+
+// Decode Decode reader to Header
+func (addr *Addr) Decode(r io.Reader) error {
+	_, err := r.Read(addr[0:])
+	return err
+}
+
+// Encode Encode Header to writer
+func (addr *Addr) Encode(w io.Writer) error {
+	_, err := w.Write(addr[0:])
+	return err
+}
+
+// Type address type,return AddrSingle ,AddrGroup ,AddrBroadcast
+func (addr *Addr) Type() byte {
+	return addr[0] >> 5
+}
+
+// Len address length
+func (addr *Addr) Len() byte {
+	return addr[0] & ^byte(3<<5)
+}
+
+// Domain domain is the scope of client
+func (addr *Addr) Domain() uint32 {
+	return littleEndian.Uint32(addr[1:5])
+}
+
+// Address address detail
+func (addr *Addr) Address() string {
+	return string(addr[5 : addr.Len()+5])
+}
+
+// Full full address
+func (addr *Addr) String() string {
+	if addr.Type() == AddrBroadcast {
+		return fmt.Sprintf("/%c/%v", AddrMap[addr.Type()], addr.Domain())
+	}
+	return fmt.Sprintf("/%c/%v/%v", AddrMap[addr.Type()], addr.Domain(), addr.Address())
+}
+
+// IsEmpty address is empty
+func (addr *Addr) IsEmpty() bool {
+	return addr[0] == 0
+}
 
 // ReadUint8 从 reader 中读取一个 uint8
 func ReadUint8(r io.Reader) (uint8, error) {
@@ -154,11 +256,11 @@ func ReadAscllString(r io.Reader, str string, capacity int) (string, error) {
 	return string(buf[0:i]), err
 }
 
-func (s64 *string64) String() string {
-	for i := range s64 {
-		if s64[i] == 0 {
-			return string(s64[0:i])
-		}
-	}
-	return ""
-}
+// func (s64 *string64) String() string {
+// 	for i := range s64 {
+// 		if s64[i] == 0 {
+// 			return string(s64[0:i])
+// 		}
+// 	}
+// 	return ""
+// }

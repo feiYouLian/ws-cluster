@@ -3,11 +3,8 @@
 
 ## 协议
 
-### 接连到服务
+### peer protocol
 
-```
-clientID := q.Get("id")
-name := q.Get("name")
-nonce := q.Get("nonce")
-digest := q.Get("digest")
-```
+|--------|
+
+### 接连到服务
