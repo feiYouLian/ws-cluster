@@ -11,6 +11,7 @@ require (
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/gorilla/websocket v1.4.0
 	github.com/mattn/go-sqlite3 v1.11.0 // indirect
+	github.com/orcaman/concurrent-map v0.0.0-20190314100340-2693aad1ed75
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
 	golang.org/x/net v0.0.0-20190813141303-74dc4d7220e7 // indirect

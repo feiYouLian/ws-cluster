@@ -24,9 +24,9 @@ const (
 	// AddrPeer peer address
 	AddrPeer = byte(1)
 	// AddrGroup group address
-	AddrGroup = byte(2)
+	AddrGroup = byte(3)
 	// AddrBroadcast broadcast address
-	AddrBroadcast = byte(3)
+	AddrBroadcast = byte(5)
 )
 
 // AddrMap addr byte to char

@@ -28,20 +28,20 @@ const (
 	secret = "xxx123456"
 )
 
-func newPeer(clientID, addr, secret string, OnMessage func(message []byte) error, OnDisconnect func() error) (*peer.Peer, error) {
+func newPeer(addr, serverhost, secret string, OnMessage func(message *wire.Message) error, OnDisconnect func() error) (*peer.Peer, error) {
 	nonce := fmt.Sprint(time.Now().UnixNano())
 	h := md5.New()
-	io.WriteString(h, clientID)
+	io.WriteString(h, addr)
 	io.WriteString(h, nonce)
 	io.WriteString(h, secret)
 
-	query := fmt.Sprintf("id=%v&nonce=%v&digest=%v", clientID, nonce, hex.EncodeToString(h.Sum(nil)))
+	query := fmt.Sprintf("addr=%v&nonce=%v&digest=%v", addr, nonce, hex.EncodeToString(h.Sum(nil)))
 
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/client", RawQuery: query}
+	u := url.URL{Scheme: "ws", Host: serverhost, Path: "/client", RawQuery: query}
 	log.Printf("connecting to %s", u.String())
 
 	client := database.Client{
-		ID: clientID,
+		ID: addr,
 	}
 
 	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
@@ -66,19 +66,20 @@ type ClientPeer struct {
 	*peer.Peer
 	// AutoConn 是否自动重连
 	AutoConn   bool
-	clientID   string
-	serverAddr string
+	addr       *wire.Addr
+	serverHost string
 	secret     string
-	message    chan []byte
+	message    chan *wire.Message
 }
 
-func newClientPeer(secret, clientID, addr string, autoConn bool, msg chan []byte) (*ClientPeer, error) {
+func newClientPeer(secret, serverHost string, clientAddr *wire.Addr, autoConn bool, msg chan *wire.Message) (*ClientPeer, error) {
+
 	clientPeer := &ClientPeer{
 		AutoConn:   autoConn,
-		clientID:   clientID,
-		serverAddr: addr,
+		serverHost: serverHost,
 		secret:     secret,
 		message:    msg,
+		addr:       clientAddr,
 	}
 	if err := clientPeer.newPeer(); err != nil {
 		return nil, err
@@ -88,13 +89,13 @@ func newClientPeer(secret, clientID, addr string, autoConn bool, msg chan []byte
 }
 
 // OnMessage OnMessage
-func (p *ClientPeer) OnMessage(message []byte) error {
+func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	p.message <- message
 	return nil
 }
 
 func (p *ClientPeer) newPeer() error {
-	peer, err := newPeer(p.clientID, p.serverAddr, p.secret, p.OnMessage, p.OnDisconnect)
+	peer, err := newPeer(p.addr.String(), p.serverHost, p.secret, p.OnMessage, p.OnDisconnect)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -116,14 +117,15 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func sendtoclient(peer *ClientPeer, to string) {
+func sendtoclient(peer *ClientPeer, to *wire.Addr) {
 	done := make(chan struct{})
-	msg, _ := wire.MakeEmptyMessage(&wire.MessageHeader{ID: uint32(time.Now().Unix()), Msgtype: wire.MsgTypeChat, Scope: wire.ScopeClient, To: to})
-	chatMsg := msg.(*wire.Msgchat)
-	chatMsg.From = peer.clientID
-	chatMsg.Type = 1
-	chatMsg.Text = fmt.Sprint("hello")
-	peer.SendMessage(chatMsg, done)
+	msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
+		Type: 1,
+		Text: "hello",
+	})
+	msg.Header.Source = *peer.addr
+	msg.Header.Dest = *to
+	peer.PushMessage(msg, done)
 	<-done
 }
 
@@ -141,7 +143,7 @@ func main() {
 	}
 	// peers := make(map[string]*ClientPeer, peerNum)
 	addpeer := make(chan *ClientPeer, 100)
-	msgchan := make(chan []byte, 100)
+	msgchan := make(chan *wire.Message, 100)
 	intervalMsgNum := 0
 	totalMsgNum := 0
 	totalPeerNum := 0
@@ -168,7 +170,8 @@ func main() {
 		ws.Add(1)
 		go func(i int) {
 			wshost := wshosts[i%2]
-			peer, err := newClientPeer(secret, fmt.Sprintf("client_%v", i), wshost, false, msgchan)
+			addr, _ := wire.NewAddr(wire.AddrPeer, 0, fmt.Sprintf("client_%v", i))
+			peer, err := newClientPeer(secret, wshost, addr, false, msgchan)
 			if err != nil {
 				log.Println(err)
 			} else {

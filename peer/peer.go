@@ -270,18 +270,7 @@ Loop:
 	}
 }
 
-// // SendMessage send a message to peer
-// func (p *Peer) SendMessage(message wire.Message, doneChan chan<- struct{}) error {
-// 	buf := &bytes.Buffer{}
-// 	err := wire.WriteMessage(buf, message)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	p.PushMessage(buf.Bytes(), doneChan)
-// 	return nil
-// }
-
-// PushMessage 把消息写到队列中，等待处理
+// PushMessage 把消息写到队列中，等待处理。如果连接已经关系，消息会被丢掉
 func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- struct{}) {
 	if !p.IsConnected() {
 		if doneChan != nil {

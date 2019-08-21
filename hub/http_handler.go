@@ -63,7 +63,6 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Println("client RemoteAddr:", r.RemoteAddr)
 	// upgrade
 	conn, err := hub.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -76,10 +75,12 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
+	peerID := fmt.Sprintf("%v@%v", addr, r.RemoteAddr)
 
-	clientPeer, err := newClientPeer(peerAddr, hub, conn, &database.Client{
+	log.Printf("client %v connecting ", peerID)
+	clientPeer, err := newClientPeer(*peerAddr, hub, conn, &database.Client{
 		ID:       addr,
-		PeerID:   fmt.Sprintf("%v@%v", addr, r.RemoteAddr),
+		PeerID:   peerID,
 		ServerID: hub.ServerID,
 		LoginAt:  uint32(time.Now().Unix()),
 	})
@@ -88,9 +89,15 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
+	done := make(chan struct{}, 0)
 	// 注册节点到服务器
-	hub.register <- &addPeer{peer: clientPeer, done: nil}
-	log.Printf("client %v connecting from %v", addr, r.RemoteAddr)
+	hub.register <- &addPeer{peer: clientPeer, done: done}
+
+	<-done
+
+	log.Printf("client %v connected", peerID)
+	ack, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{PeerID: peerID})
+	clientPeer.PushMessage(ack, nil)
 }
 
 // 处理来自服务器节点的连接
@@ -126,9 +133,11 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	done := make(chan struct{}, 0)
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
+	<-done
 
-	log.Printf("server %v connecting from %v", ID, r.RemoteAddr)
+	log.Printf("server %v connected", ID)
 }
 
 // 处理 http 过来的消息发送
@@ -149,9 +158,10 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, err.Error())
 		return
 	}
-	msg.Header.Source, _ = wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
-	msg.Header.Dest, _ = wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
-
+	source, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
+	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
+	msg.Header.Source = *source
+	msg.Header.Dest = *dest
 	hub.msgQueue <- &Msg{from: clientFlag, message: msg}
 	fmt.Fprint(w, "ok")
 }
@@ -159,13 +169,13 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 // 处理 http 过来的消息发送
 func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addrstr := r.URL.Query().Get("addr")
-	addr, err := wire.NewPeerAddr(addrstr)
+	_, err := wire.NewPeerAddr(addrstr)
 	if err != nil {
 		fmt.Fprint(w, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	if p, ok := hub.clientPeers[*addr]; ok {
-		fmt.Fprint(w, p.entity.LoginAt)
+	if p, ok := hub.clientPeers.Get(addrstr); ok {
+		fmt.Fprint(w, p.(*ClientPeer).entity.LoginAt)
 		return
 	}
 	fmt.Fprint(w, 0)

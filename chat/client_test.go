@@ -9,16 +9,18 @@ import (
 	"log"
 	"testing"
 	"time"
+
+	"github.com/ws-cluster/wire"
 )
 
 func Test_sendtoclient(t *testing.T) {
-	msgchan := make(chan []byte, 100)
+	msgchan := make(chan *wire.Message, 100)
 	quit := make(chan bool)
 	ackNum := 0
 	totalNum := 0
 	ticker := time.NewTicker(time.Second)
 
-	peerNum := 100
+	peerNum := 10
 	sendNum := peerNum * 10
 
 	defer ticker.Stop()
@@ -37,8 +39,9 @@ func Test_sendtoclient(t *testing.T) {
 			}
 		}
 	}()
+	sysaddr, _ := wire.NewAddr(wire.AddrPeer, 0, "sys")
 
-	syspeer, err := newClientPeer(secret, "sys", wshosts[0], false, msgchan)
+	syspeer, err := newClientPeer(secret, wshosts[0], sysaddr, false, msgchan)
 	if err != nil {
 		log.Println(err)
 		return
@@ -46,7 +49,8 @@ func Test_sendtoclient(t *testing.T) {
 
 	t1 := time.Now()
 	for index := 0; index < sendNum; index++ {
-		sendtoclient(syspeer, fmt.Sprintf("client_%v", index%peerNum))
+		addr, _ := wire.NewAddr(wire.AddrPeer, 0, fmt.Sprintf("client_%v", index%peerNum))
+		sendtoclient(syspeer, addr)
 		// time.Sleep(time.Second)
 	}
 	t2 := time.Now()

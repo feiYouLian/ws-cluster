@@ -8,10 +8,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/gorilla/websocket"
+	cmap "github.com/orcaman/concurrent-map"
 	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
 	"github.com/ws-cluster/filelog"
@@ -62,8 +64,10 @@ type Hub struct {
 	// groupCache  database.GroupCache
 	serverCache database.ServerCache
 
+	clientRw sync.RWMutex
+	serverRw sync.RWMutex
 	// clientPeers 缓存客户端节点数据
-	clientPeers map[wire.Addr]*ClientPeer
+	clientPeers cmap.ConcurrentMap
 	// serverPeers 缓存服务端节点数据
 	serverPeers map[uint64]*ServerPeer
 	groups      map[wire.Addr]mapset.Set
@@ -124,7 +128,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		clientCache: clientCache,
 		serverCache: cfg.Cache.Server,
 		// groupCache:   cfg.Cache.Group,
-		clientPeers:  make(map[wire.Addr]*ClientPeer, 1000),
+		clientPeers:  cmap.New(),
 		serverPeers:  make(map[uint64]*ServerPeer, 10),
 		groups:       make(map[wire.Addr]mapset.Set, 100),
 		register:     make(chan *addPeer, 1),
@@ -168,7 +172,7 @@ func (h *Hub) pingHandler() error {
 		select {
 		case <-ticker.C:
 			server := h.ServerSelf
-			server.ClientNum = len(h.clientPeers)
+			server.ClientNum = h.clientPeers.Count()
 			h.serverCache.SetServer(server)
 
 			isMaster := true
@@ -248,7 +252,9 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				if oldpeer, ok := h.clientPeers[*peer.addr]; ok {
+				peerAddr := peer.addr.String()
+				if elem, ok := h.clientPeers.Get(peerAddr); ok {
+					oldpeer := elem.(*ClientPeer)
 					// 如果节点已经登陆，就把前一个 peer踢下线
 					msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
 						PeerID: oldpeer.ID,
@@ -270,10 +276,8 @@ func (h *Hub) peerHandler() {
 						}
 					}
 				}
-				h.clientPeers[*peer.addr] = peer
+				h.clientPeers.Set(peerAddr, peer)
 				h.clientCache.AddClient(peer.entity)
-
-				log.Printf("client %v connected", peer.ID)
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				h.serverPeers[peer.entity.ID] = peer
@@ -286,11 +290,13 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				if p, ok := h.clientPeers[*peer.addr]; ok {
+				peerAddr := peer.addr.String()
+				if elem, ok := h.clientPeers.Get(peerAddr); ok {
+					p := elem.(*ClientPeer)
 					if p.Peer.ID != peer.Peer.ID {
 						continue
 					}
-					delete(h.clientPeers, *peer.addr)
+					h.clientPeers.Remove(peerAddr)
 					h.clientCache.DelClient(peer.entity.ID)
 					log.Printf("client %v disconnected", peer.ID)
 				}
@@ -368,8 +374,8 @@ func (h *Hub) messageHandler() {
 			if dest.Type() == wire.AddrPeer {
 
 				// 在当前服务器节点中找到了目标客户端
-				if client, ok := h.clientPeers[*dest]; ok {
-					client.PushMessage(msg.message, nil)
+				if client, ok := h.clientPeers.Get(dest.String()); ok {
+					client.(*ClientPeer).PushMessage(msg.message, nil)
 					continue
 				}
 
@@ -382,15 +388,21 @@ func (h *Hub) messageHandler() {
 				if server, ok := h.serverPeers[client.ServerID]; ok {
 					server.PushMessage(msg.message, nil)
 				}
-			} else if dest.Type() == wire.AddrGroup {
+			} else {
 				// 如果消息是直接来源于 client。就转发到其它服务器
 				if msg.from == clientFlag {
 					for _, serverpeer := range h.serverPeers {
 						serverpeer.PushMessage(msg.message, nil)
 					}
 				}
-				// 消息异步发送到群中所有用户
-				go h.sendToGroup(dest, msg.message)
+
+				if dest.Type() == wire.AddrGroup {
+					// 消息异步发送到群中所有用户
+					go h.sendToGroup(dest, msg.message)
+				} else if dest.Type() == wire.AddrBroadcast {
+					// 消息异步发送到群中所有用户
+					go h.sendToDomain(dest, msg.message)
+				}
 			}
 
 			// log.Printf("message %v relaying \n", header.ID)
@@ -417,9 +429,9 @@ func (h *Hub) commandHandler() {
 
 					switch msgGroup.InOut {
 					case wire.GroupIn:
-						h.groups[group].Add(*header.Source) // not pointer
+						h.groups[group].Add(header.Source) // not pointer
 					case wire.GroupOut:
-						h.groups[group].Remove(*header.Source)
+						h.groups[group].Remove(header.Source)
 
 						if h.groups[group].Cardinality() == 0 {
 							delete(h.groups, group)
@@ -433,9 +445,9 @@ func (h *Hub) commandHandler() {
 
 var errMessageReceiverOffline = errors.New("Message Receiver is offline")
 
-func (h *Hub) sendToGroup(group *wire.Addr, message *wire.Message) {
+func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
 	// 读取群用户列表。转发
-	addrs := h.groups[*group]
+	addrs := h.groups[group]
 
 	if addrs.Cardinality() == 0 {
 		return
@@ -446,16 +458,25 @@ func (h *Hub) sendToGroup(group *wire.Addr, message *wire.Message) {
 
 	for elem := range addrs.Iterator().C {
 		addr := elem.(wire.Addr)
-		if client, ok := h.clientPeers[addr]; ok {
-			client.PushMessage(message, nil)
+		if client, ok := h.clientPeers.Get(addr.String()); ok {
+			client.(*ClientPeer).PushMessage(message, nil)
 		} else {
 			// 如果发现用户不存在就清理掉
 			msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeGroupInOut, &wire.MsgGroupInOut{
 				InOut:  wire.GroupOut,
-				Groups: []wire.Addr{*group},
+				Groups: []wire.Addr{group},
 			})
-			msg.Header.Source = &addr
+			msg.Header.Source = addr
 			h.commandChan <- msg
+		}
+	}
+}
+
+func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
+	for elem := range h.clientPeers.Iter() {
+		addr, _ := wire.NewPeerAddr(elem.Key)
+		if addr.Domain() == dest.Domain() {
+			elem.Val.(*ClientPeer).PushMessage(message, nil)
 		}
 	}
 }
@@ -464,7 +485,7 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 	messages := make([]*database.ChatMsg, 0)
 	for _, buf := range bufs {
 		msg := new(wire.Message)
-		if err := msg.Encode(buf); err != nil {
+		if err := msg.Decode(buf); err != nil {
 			fmt.Println(err)
 			continue
 		}
@@ -505,8 +526,10 @@ func (h *Hub) clean() {
 		log.Println("clean server in cache")
 	}
 
-	for _, peer := range h.clientPeers {
+	for elem := range h.clientPeers.Iter() {
+		peer := elem.Val.(*ClientPeer)
 		peer.Close()
+
 		h.clientCache.DelClient(peer.entity.ID)
 	}
 

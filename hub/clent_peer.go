@@ -12,7 +12,7 @@ import (
 // ClientPeer 代表一个客户端节点，消息收发的处理逻辑
 type ClientPeer struct {
 	*peer.Peer
-	addr   *wire.Addr
+	addr   wire.Addr
 	hub    *Hub
 	entity *database.Client
 }
@@ -39,7 +39,7 @@ func (p *ClientPeer) OnDisconnect() error {
 	return nil
 }
 
-func newClientPeer(addr *wire.Addr, h *Hub, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
+func newClientPeer(addr wire.Addr, h *Hub, conn *websocket.Conn, client *database.Client) (*ClientPeer, error) {
 	clientPeer := &ClientPeer{
 		hub:    h,
 		entity: client,

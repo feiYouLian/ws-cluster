@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -33,8 +34,8 @@ type Protocol interface {
 
 // Header is Message Header
 type Header struct {
-	Source  *Addr  //source address
-	Dest    *Addr  //destination address
+	Source  Addr   //source address
+	Dest    Addr   //destination address
 	Seq     uint32 //消息序列号，peer唯一
 	AckSeq  uint32 //应答消息序列号
 	Command uint8  //命令类型
@@ -90,10 +91,16 @@ type Message struct {
 
 // Decode Decode reader to Message
 func (m *Message) Decode(r io.Reader) error {
+	var err error
+	m.Header = &Header{}
 	if err := m.Header.Decode(r); err != nil {
 		return err
 	}
-	if err := m.Body.Decode(r); err != nil {
+	m.Body, err = MakeEmptyBody(m.Header.Command)
+	if err != nil {
+		return err
+	}
+	if err = m.Body.Decode(r); err != nil {
 		return err
 	}
 	return nil
@@ -110,91 +117,23 @@ func (m *Message) Encode(w io.Writer) error {
 	return nil
 }
 
-// // ReadHeader read header
-// func ReadHeader(r io.Reader) (*MessageHeader, error) {
-// 	header := &MessageHeader{}
-// 	var err error
-// 	// if header.ID, err = ReadUint32(r); err != nil {
-// 	// 	return nil, err
-// 	// }
-// 	// if header.Msgtype, err = ReadUint8(r); err != nil {
-// 	// 	return nil, err
-// 	// }
-// 	// if header.Scope, err = ReadUint8(r); err != nil {
-// 	// 	return nil, err
-// 	// }
-// 	// if header.Scope == ScopeNull {
-// 	// 	return header, nil
-// 	// }
-// 	// if header.To, err = ReadString(r); err != nil {
-// 	// 	return nil, err
-// 	// }
-// 	return header, nil
-// }
-
-// // WriteHeader write header to writer
-// func WriteHeader(w io.Writer, msg Message) error {
-// 	header := msg.Header()
-// 	if err := WriteUint32(w, header.ID); err != nil {
-// 		return err
-// 	}
-// 	// if err := WriteUint8(w, header.Msgtype); err != nil {
-// 	// 	return err
-// 	// }
-// 	// if err := WriteUint8(w, header.Scope); err != nil {
-// 	// 	return err
-// 	// }
-// 	// if header.Scope == ScopeNull {
-// 	// 	return nil
-// 	// }
-// 	// if err := WriteString(w, header.To); err != nil {
-// 	// 	return err
-// 	// }
-// 	return nil
-// }
-
-// // ReadMessage 从reader 中读取消息
-// func ReadMessage(r io.Reader, Command uint8) (Protocol, error) {
-// 	msg, err := MakeEmptyMessage(Command)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if err = msg.decode(r); err != nil {
-// 		return nil, err
-// 	}
-// 	return msg, nil
-// }
-
-// // WriteMessage 把 msg 写到 w 中
-// func WriteMessage(w io.Writer, msg Protocol) error {
-// 	if err := msg.encode(w); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
-// MakeEmptyMessage 创建一个空的消息体
-// func MakeEmptyMessage(Command uint8) (*Message, error) {
-// 	var msg Protocol
-// 	switch Command {
-// 	case MsgTypeChat:
-// 		msg = &Msgchat{}
-// 	case MsgTypeGroupInOut:
-// 		msg = &MsgGroupInOut{}
-// 	case MsgTypeKill:
-// 		msg = &MsgKill{}
-// 	case MsgTypeLoginAck:
-// 		msg = &MsgLoginAck{}
-// 	default:
-// 		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
-// 	}
-// 	return &Message{
-// 		Header: &Header{
-// 			Command: Command,
-// 		},
-// 		Body: msg,
-// 	}, nil
-// }
+// MakeEmptyBody 创建一个空的消息体
+func MakeEmptyBody(Command uint8) (Protocol, error) {
+	var body Protocol
+	switch Command {
+	case MsgTypeChat:
+		body = &Msgchat{}
+	case MsgTypeGroupInOut:
+		body = &MsgGroupInOut{}
+	case MsgTypeKill:
+		body = &MsgKill{}
+	case MsgTypeLoginAck:
+		body = &MsgLoginAck{}
+	default:
+		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
+	}
+	return body, nil
+}
 
 // MakeEmptyHeaderMessage Make a Message which header is empty
 func MakeEmptyHeaderMessage(Command uint8, body Protocol) (*Message, error) {
@@ -205,49 +144,3 @@ func MakeEmptyHeaderMessage(Command uint8, body Protocol) (*Message, error) {
 		Body: body,
 	}, nil
 }
-
-// // MakeAckMessage make a ChatAck message
-// func MakeAckMessage(id uint32, state uint8) ([]byte, error) {
-// 	ackHeader := &MessageHeader{ID: id, Command: MsgTypeAck}
-// 	ackMessage, _ := MakeEmptyMessage(ackHeader)
-// 	msgAck, _ := ackMessage.(*MsgAck)
-// 	// set state sent
-// 	msgAck.State = state
-
-// 	buf := &bytes.Buffer{}
-// 	err := WriteMessage(buf, msgAck)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return buf.Bytes(), nil
-// }
-
-// // MakeKillMessage kill to
-// func MakeKillMessage(id uint32, client string, peerID string) ([]byte, error) {
-// 	header := &MessageHeader{ID: id, Command: MsgTypeKill}
-// 	message, _ := MakeEmptyMessage(header)
-// 	msgKill := message.(*MsgKill)
-// 	msgKill.PeerID = peerID
-
-// 	buf := &bytes.Buffer{}
-// 	err := WriteMessage(buf, message)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return buf.Bytes(), nil
-// }
-
-// // MakeLoginAckMessage login ack
-// func MakeLoginAckMessage(id uint32, peerID string) ([]byte, error) {
-// 	header := &MessageHeader{ID: id, Command: MsgTypeLoginAck}
-// 	message, _ := MakeEmptyMessage(header)
-// 	msgLoginAck := message.(*MsgLoginAck)
-// 	msgLoginAck.PeerID = peerID
-
-// 	buf := &bytes.Buffer{}
-// 	err := WriteMessage(buf, message)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return buf.Bytes(), nil
-// }
