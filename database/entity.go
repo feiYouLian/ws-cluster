@@ -8,7 +8,7 @@ import (
 type Client struct {
 	ID       string
 	PeerID   string //全局唯一id.
-	ServerID uint64
+	ServerID string
 	LoginAt  uint32 //second
 }
 
@@ -22,14 +22,14 @@ type Group struct {
 // Server 服务器对象
 type Server struct {
 	// ID 服务器Id, 自动生成，缓存到file 中，重启时 ID 不变
-	ID   uint64
-	IP   string
+	ID   string
+	Host string
 	Port int
 	// ClientNum 在线人数
 	ClientNum int
 	StartAt   int64
 
-	OutServers map[uint64]string
+	OutServers map[string]string
 }
 
 // ChatMsg 聊消息

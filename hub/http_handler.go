@@ -8,8 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
-	"time"
+	"net/url"
 
 	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
@@ -78,12 +77,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	peerID := fmt.Sprintf("%v@%v", addr, r.RemoteAddr)
 
 	log.Printf("client %v connecting ", peerID)
-	clientPeer, err := newClientPeer(*peerAddr, hub, conn, &database.Client{
-		ID:       addr,
-		PeerID:   peerID,
-		ServerID: hub.ServerID,
-		LoginAt:  uint32(time.Now().Unix()),
-	})
+	clientPeer, err := newClientPeer(*peerAddr, r.RemoteAddr, hub, conn)
 
 	if err != nil {
 		handleHTTPErr(w, err)
@@ -102,18 +96,21 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	ID, _ := strconv.ParseUint(r.Header.Get("id"), 0, 64)
-	IP := r.Header.Get("ip")
-	Port, _ := strconv.Atoi(r.Header.Get("port"))
+	ID := r.Header.Get("id")
+	URL, err := url.Parse(r.Header.Get("url"))
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
 	digest := r.Header.Get("digest")
 
-	if ID == 0 || IP == "" || Port == 0 {
+	if ID == "" {
 		// 错误处理，断开
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", ID, IP, Port), digest) {
+	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", ID, URL.String()), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -123,11 +120,12 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	serverPeer, err := bindServerPeer(hub, conn, &database.Server{
-		ID:   ID,
-		IP:   IP,
-		Port: Port,
-	})
+
+	serverPeer, err := bindServerPeer(hub, conn, &Server{
+		ID:     ID,
+		URL:    URL,
+		Secret: hub.config.Server.Secret,
+	}, r.RemoteAddr)
 	if err != nil {
 		log.Println(err)
 		return
@@ -162,7 +160,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
 	msg.Header.Source = *source
 	msg.Header.Dest = *dest
-	hub.msgQueue <- &Msg{from: clientFlag, message: msg}
+	hub.msgQueue <- &Packet{from: fromClient, fromID: body.From, message: msg}
 	fmt.Fprint(w, "ok")
 }
 
@@ -175,7 +173,7 @@ func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusBadRequest)
 	}
 	if p, ok := hub.clientPeers.Get(addrstr); ok {
-		fmt.Fprint(w, p.(*ClientPeer).entity.LoginAt)
+		fmt.Fprint(w, p.(*ClientPeer).LoginAt)
 		return
 	}
 	fmt.Fprint(w, 0)

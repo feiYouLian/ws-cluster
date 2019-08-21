@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/ws-cluster/database"
@@ -35,7 +34,7 @@ const (
 
 // ServerConfig ServerConfig
 type ServerConfig struct {
-	ID          uint64 `description:"server id"`
+	ID          string `description:"server id"`
 	Addr        string
 	Listen      int
 	Secret      string
@@ -134,7 +133,7 @@ func LoadConfig() (*Config, error) {
 }
 
 // BuildServerID build a serverID
-func BuildServerID() (uint64, error) {
+func BuildServerID() (string, error) {
 	// deal server id
 	_, err := os.Stat(defaultIDConfigFile)
 	if err != nil {
@@ -143,7 +142,7 @@ func BuildServerID() (uint64, error) {
 	}
 	fb, err := ioutil.ReadFile(defaultIDConfigFile)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
-	return strconv.ParseUint(string(fb), 0, 64)
+	return string(fb), nil
 }

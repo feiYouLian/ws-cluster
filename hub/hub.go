@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
@@ -21,28 +21,29 @@ import (
 )
 
 const (
-	clientFlag     = byte(0)
-	serverFlag     = byte(1)
-	reconnectTimes = 10
-	pingInterval   = time.Second * 3
+	pingInterval = time.Second * 3
 )
 
 const (
-	peerTypeClient = 1
-	peerTypeServer = 2
+	fromClient = 1
+	fromServer = 3
 )
 
-// Msg to hub
-type Msg struct {
-	from    byte
+// Packet  Packet to hub
+type Packet struct {
+	from    uint8 // fromClient or fromServer
+	fromID  string
 	message *wire.Message
 	err     chan error
 }
 
-// type saveMessage struct {
-// 	msg  *database.ChatMsg
-// 	done chan bool //
-// }
+// Server 服务器对象
+type Server struct {
+	// ID 服务器Id, 自动生成，缓存到file 中，重启时 ID 不变
+	ID     string
+	URL    *url.URL
+	Secret string
+}
 
 type addPeer struct {
 	peer interface{}
@@ -56,31 +57,28 @@ type delPeer struct {
 
 // Hub 是一个服务中心，所有 clientPeer
 type Hub struct {
-	upgrader    *websocket.Upgrader
-	config      *config.Config
-	ServerID    uint64
-	ServerSelf  *database.Server
-	clientCache database.ClientCache
+	upgrader *websocket.Upgrader
+	config   *config.Config
+	Server   *Server // self
+	// clientCache database.ClientCache
 	// groupCache  database.GroupCache
-	serverCache database.ServerCache
+	// serverCache database.ServerCache
 
-	clientRw sync.RWMutex
-	serverRw sync.RWMutex
 	// clientPeers 缓存客户端节点数据
 	clientPeers cmap.ConcurrentMap
 	// serverPeers 缓存服务端节点数据
-	serverPeers map[uint64]*ServerPeer
+	serverPeers cmap.ConcurrentMap
 	groups      map[wire.Addr]mapset.Set
+	location    cmap.ConcurrentMap // client location to server
 
 	messageLog *filelog.FileLog
-	loginLog   *filelog.FileLog
 
 	register   chan *addPeer
 	unregister chan *delPeer
 
 	commandChan  chan *wire.Message
-	msgQueue     chan *Msg
-	msgRelay     chan *Msg
+	msgQueue     chan *Packet
+	msgRelay     chan *Packet
 	msgRelayDone chan uint32
 	quit         chan struct{}
 }
@@ -103,13 +101,6 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		},
 	}
 
-	var clientCache database.ClientCache
-
-	if cfg.Server.Mode == config.ModeSingle {
-		clientCache = newHubClientCache(cfg.Cache.Client, false)
-	} else {
-		clientCache = newHubClientCache(cfg.Cache.Client, true)
-	}
 	messageLogConfig := &filelog.Config{
 		File: cfg.Server.MessageFile,
 		SubFunc: func(msgs []*bytes.Buffer) error {
@@ -122,24 +113,24 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	}
 
 	hub := &Hub{
-		upgrader:    upgrader,
-		config:      cfg,
-		ServerID:    cfg.Server.ID,
-		clientCache: clientCache,
-		serverCache: cfg.Cache.Server,
-		// groupCache:   cfg.Cache.Group,
+		upgrader:     upgrader,
+		config:       cfg,
 		clientPeers:  cmap.New(),
-		serverPeers:  make(map[uint64]*ServerPeer, 10),
+		serverPeers:  cmap.New(),
 		groups:       make(map[wire.Addr]mapset.Set, 100),
 		register:     make(chan *addPeer, 1),
 		unregister:   make(chan *delPeer, 1),
-		msgQueue:     make(chan *Msg, 1),
-		msgRelay:     make(chan *Msg, 1),
+		msgQueue:     make(chan *Packet, 1),
+		msgRelay:     make(chan *Packet, 1),
 		msgRelayDone: make(chan uint32, 1),
 		commandChan:  make(chan *wire.Message, 1000),
-
-		messageLog: messageLog,
-		quit:       make(chan struct{}),
+		messageLog:   messageLog,
+		quit:         make(chan struct{}),
+		Server: &Server{
+			ID:     cfg.Server.ID,
+			Secret: cfg.Server.Secret,
+			URL:    &url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", wire.GetOutboundIP().String(), cfg.Server.Listen), Path: "/server"},
+		},
 	}
 
 	go httplisten(hub, &cfg.Server)
@@ -154,7 +145,6 @@ func (h *Hub) Run() {
 	go h.messageHandler()
 	go h.messageQueueHandler()
 	go h.commandHandler()
-	go h.pingHandler()
 
 	// 连接到其它服务器节点,并且对放开放服务
 	h.outPeerHandler()
@@ -162,44 +152,31 @@ func (h *Hub) Run() {
 	<-h.quit
 }
 
-func (h *Hub) pingHandler() error {
-	if h.config.Server.Mode == config.ModeSingle {
-		return nil
-	}
-	ticker := time.NewTicker(time.Second * 3)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			server := h.ServerSelf
-			server.ClientNum = h.clientPeers.Count()
-			h.serverCache.SetServer(server)
+// func (h *Hub) pingHandler() error {
+// 	if h.config.Server.Mode == config.ModeSingle {
+// 		return nil
+// 	}
+// 	ticker := time.NewTicker(time.Second * 3)
+// 	defer ticker.Stop()
+// 	for {
+// 		select {
+// 		case <-ticker.C:
+// 			server := h.ServerSelf
+// 			server.ClientNum = h.clientPeers.Count()
+// 			h.serverCache.SetServer(server)
 
-			isMaster := true
-			for _, s := range h.serverPeers {
-				if s.entity.ID < server.ID {
-					isMaster = false
-				}
-			}
-			if isMaster {
-				h.serverCache.Clean()
-			}
-		}
-	}
-}
-
-func isMasterServer(servers []database.Server, ID, exID uint64) bool {
-	isMaster := true
-	for _, s := range servers {
-		if s.ID == exID {
-			continue
-		}
-		if s.ID < ID { // 最小的 id 就是存活最久的服务，就是主服务
-			isMaster = false
-		}
-	}
-	return isMaster
-}
+// 			isMaster := true
+// 			for _, s := range h.serverPeers {
+// 				if s.entity.ID < server.ID {
+// 					isMaster = false
+// 				}
+// 			}
+// 			if isMaster {
+// 				h.serverCache.Clean()
+// 			}
+// 		}
+// 	}
+// }
 
 // 与其它服务器节点建立长连接
 func (h *Hub) outPeerHandler() error {
@@ -207,39 +184,37 @@ func (h *Hub) outPeerHandler() error {
 	if h.config.Server.Mode == config.ModeSingle {
 		return nil
 	}
-	servers, err := h.serverCache.GetServers()
-	if err != nil {
-		return err
-	}
-	serverSelf := database.Server{
-		ID:         h.ServerID,
-		IP:         wire.GetOutboundIP().String(),
-		Port:       h.config.Server.Listen,
-		StartAt:    time.Now().Unix(),
-		ClientNum:  0,
-		OutServers: make(map[uint64]string),
-	}
-	h.ServerSelf = &serverSelf
+	// servers, err := h.serverCache.GetServers()
 
-	// 主动连接到其它节点
-	for _, server := range servers {
-		if server.ID == serverSelf.ID {
-			continue
-		}
-		// ID  不一样，IP和端口一样
-		if server.IP == serverSelf.IP && server.Port == serverSelf.Port {
-			h.serverCache.DelServer(server.ID)
-			continue
-		}
-		serverPeer, err := newServerPeer(h, &server)
-		if err != nil {
-			continue
-		}
-		h.register <- &addPeer{peer: serverPeer, done: nil}
-	}
+	// serverSelf := database.Server{
+	// 	ID:         h.config.Server.ID,
+	// 	IP:         wire.GetOutboundIP().String(),
+	// 	Port:       h.config.Server.Listen,
+	// 	StartAt:    time.Now().Unix(),
+	// 	ClientNum:  0,
+	// 	OutServers: make(map[string]string),
+	// }
+	// h.ServerSelf = &serverSelf
 
-	// 记录到远程缓存中
-	h.serverCache.SetServer(&serverSelf)
+	// // 主动连接到其它节点
+	// for _, server := range servers {
+	// 	if server.ID == serverSelf.ID {
+	// 		continue
+	// 	}
+	// 	// ID  不一样，IP和端口一样
+	// 	if server.IP == serverSelf.IP && server.Port == serverSelf.Port {
+	// 		h.serverCache.DelServer(server.ID)
+	// 		continue
+	// 	}
+	// 	serverPeer, err := newServerPeer(h, &server)
+	// 	if err != nil {
+	// 		continue
+	// 	}
+	// 	h.register <- &addPeer{peer: serverPeer, done: nil}
+	// }
+
+	// // 记录到远程缓存中
+	// h.serverCache.SetServer(&serverSelf)
 	log.Println("end outPeerhandler")
 	return nil
 }
@@ -252,8 +227,7 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				peerAddr := peer.addr.String()
-				if elem, ok := h.clientPeers.Get(peerAddr); ok {
+				if elem, ok := h.clientPeers.Get(peer.ID); ok {
 					oldpeer := elem.(*ClientPeer)
 					// 如果节点已经登陆，就把前一个 peer踢下线
 					msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
@@ -262,26 +236,15 @@ func (h *Hub) peerHandler() {
 
 					fmt.Printf("kill client:%v \n", oldpeer.ID)
 					oldpeer.PushMessage(msg, nil)
-				} else {
-					client, _ := h.clientCache.GetClient(peer.entity.ID)
-					// 如果节点已经登陆到其它服务器，就发送一个MsgKillClient踢去另外一台服务上的连接
-					if client != nil {
-						msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
-							PeerID: client.PeerID,
-						})
-						msg.Header.Dest = peer.addr // same addr
-
-						if server, ok := h.serverPeers[client.ServerID]; ok {
-							server.PushMessage(msg, nil)
-						}
-					}
 				}
-				h.clientPeers.Set(peerAddr, peer)
-				h.clientCache.AddClient(peer.entity)
+				msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{})
+				msg.Header.Dest = peer.Addr // same addr
+				h.broadcast(msg)            // 广播此消息到其它服务器节点
+
+				h.clientPeers.Set(peer.ID, peer)
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
-				h.serverPeers[peer.entity.ID] = peer
-				h.ServerSelf.OutServers[peer.entity.ID] = time.Now().Format(time.Stamp)
+				h.serverPeers.Set(peer.ID, peer)
 			}
 			if p.done != nil {
 				p.done <- struct{}{}
@@ -290,21 +253,18 @@ func (h *Hub) peerHandler() {
 			switch p.peer.(type) {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
-				peerAddr := peer.addr.String()
-				if elem, ok := h.clientPeers.Get(peerAddr); ok {
+				if elem, ok := h.clientPeers.Get(peer.ID); ok {
 					p := elem.(*ClientPeer)
 					if p.Peer.ID != peer.Peer.ID {
 						continue
 					}
-					h.clientPeers.Remove(peerAddr)
-					h.clientCache.DelClient(peer.entity.ID)
+					h.clientPeers.Remove(peer.ID)
 					log.Printf("client %v disconnected", peer.ID)
 				}
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
-				if _, ok := h.serverPeers[peer.entity.ID]; ok {
-					delete(h.serverPeers, peer.entity.ID)
-					delete(h.ServerSelf.OutServers, peer.entity.ID)
+				if h.serverPeers.Has(peer.ID) {
+					h.serverPeers.Remove(peer.ID)
 					log.Printf("server %v disconnected", peer.ID)
 				}
 			}
@@ -315,12 +275,6 @@ func (h *Hub) peerHandler() {
 	}
 }
 
-// login ack ,return a peerId to client
-// func peerRegistAck(peer *ClientPeer) {
-// 	buf, _ := wire.MakeLoginAckMessage(0, peer.ID)
-// 	peer.PushMessage(buf, nil)
-// }
-
 // 处理消息queue
 func (h *Hub) messageQueueHandler() {
 	log.Println("start messageQueueHandler")
@@ -330,7 +284,7 @@ func (h *Hub) messageQueueHandler() {
 	waiting := false
 
 	// To avoid duplication below.
-	queuePacket := func(msg *Msg, list *list.List, waiting bool) bool {
+	queuePacket := func(msg *Packet, list *list.List, waiting bool) bool {
 		if !waiting {
 			h.msgRelay <- msg
 		} else {
@@ -358,7 +312,7 @@ func (h *Hub) messageQueueHandler() {
 				continue
 			}
 			val := pendingMsgs.Remove(next)
-			h.msgRelay <- val.(*Msg)
+			h.msgRelay <- val.(*Packet)
 		}
 	}
 }
@@ -372,28 +326,27 @@ func (h *Hub) messageHandler() {
 			dest := header.Dest
 			// log.Println("messagehandler: a message to ", header.To)
 			if dest.Type() == wire.AddrPeer {
-
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers.Get(dest.String()); ok {
 					client.(*ClientPeer).PushMessage(msg.message, nil)
 					continue
 				}
-
-				// 读取目标client所在的服务器
-				client, err := h.clientCache.GetClient(dest.String())
-				if err != nil || client == nil {
+				if msg.from == fromServer { // throw out message
 					continue
 				}
 
-				if server, ok := h.serverPeers[client.ServerID]; ok {
-					server.PushMessage(msg.message, nil)
+				serverID, has := h.location.Get(dest.String())
+				if !has { // 如果找不到定位，广播此消息
+					h.broadcast(msg.message)
+				} else {
+					if server, ok := h.serverPeers.Get(serverID.(string)); ok {
+						server.(*ServerPeer).PushMessage(msg.message, nil)
+					}
 				}
 			} else {
 				// 如果消息是直接来源于 client。就转发到其它服务器
-				if msg.from == clientFlag {
-					for _, serverpeer := range h.serverPeers {
-						serverpeer.PushMessage(msg.message, nil)
-					}
+				if msg.from == fromClient {
+					h.broadcast(msg.message)
 				}
 
 				if dest.Type() == wire.AddrGroup {
@@ -478,6 +431,14 @@ func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
 		if addr.Domain() == dest.Domain() {
 			elem.Val.(*ClientPeer).PushMessage(message, nil)
 		}
+	}
+}
+
+// broadcast message to all server
+func (h *Hub) broadcast(message *wire.Message) {
+	// errchan := make(chan error, h.serverPeers.Count())
+	for elem := range h.serverPeers.Iter() {
+		elem.Val.(*ServerPeer).PushMessage(message, nil)
 	}
 }
 

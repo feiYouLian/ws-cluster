@@ -27,9 +27,10 @@ func Test_sendtoclient(t *testing.T) {
 	go func() {
 		for {
 			select {
-			case <-msgchan:
+			case message := <-msgchan:
 				ackNum++
 				totalNum++
+				log.Printf(" from %v to %v Command:%v", message.Header.Source, message.Header.Dest, message.Header.Command)
 			case <-ticker.C:
 				log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
 				ackNum = 0

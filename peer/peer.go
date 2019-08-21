@@ -51,12 +51,13 @@ type Config struct {
 
 type outMessage struct {
 	message *wire.Message
-	done    chan<- struct{}
+	done    chan<- error
 }
 
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
 	ID            string
+	RemoteAddr    string // ip:port
 	config        *Config
 	conn          *websocket.Conn
 	outQueue      chan outMessage
@@ -67,12 +68,11 @@ type Peer struct {
 	timeConnected time.Time
 
 	connected int32
-
-	autoSeq uint32
+	autoSeq   uint32
 }
 
 // NewPeer 创建一个新的节点
-func NewPeer(ID string, config *Config) *Peer {
+func NewPeer(ID string, RemoteAddr string, config *Config) *Peer {
 	if config.WriteWait == 0 {
 		config.WriteWait = defaultWriteWait
 	}
@@ -90,13 +90,14 @@ func NewPeer(ID string, config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
-		ID:        ID,
-		config:    config,
-		outQueue:  make(chan outMessage, 1),
-		sendQueue: make(chan outMessage, 1),
-		sendDone:  make(chan struct{}, 1),
-		quit:      make(chan struct{}),
-		queueQuit: make(chan struct{}),
+		ID:         ID,
+		RemoteAddr: RemoteAddr,
+		config:     config,
+		outQueue:   make(chan outMessage, 1),
+		sendQueue:  make(chan outMessage, 1),
+		sendDone:   make(chan struct{}, 1),
+		quit:       make(chan struct{}),
+		queueQuit:  make(chan struct{}),
 	}
 }
 
@@ -241,21 +242,23 @@ Loop:
 
 			w, err := p.conn.NextWriter(websocket.BinaryMessage)
 			if err != nil {
-				log.Println(err)
+				outMessage.done <- err
 				return
 			}
 
-			outMessage.message.Encode(w)
+			err = outMessage.message.Encode(w)
 
-			if outMessage.done != nil {
-				outMessage.done <- struct{}{}
+			if err != nil {
+				outMessage.done <- err
+				continue
 			}
 
 			if err := w.Close(); err != nil {
-				log.Println(err)
-				return
+				outMessage.done <- err
+				continue
 			}
 
+			outMessage.done <- nil
 			p.sendDone <- struct{}{}
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
@@ -271,11 +274,11 @@ Loop:
 }
 
 // PushMessage 把消息写到队列中，等待处理。如果连接已经关系，消息会被丢掉
-func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- struct{}) {
+func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- error) {
 	if !p.IsConnected() {
 		if doneChan != nil {
 			go func() {
-				doneChan <- struct{}{}
+				doneChan <- nil
 			}()
 		}
 		return
