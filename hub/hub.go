@@ -75,7 +75,7 @@ type Hub struct {
 	register   chan *addPeer
 	unregister chan *delPeer
 
-	commandChan  chan *wire.Message
+	commandChan  chan *Packet
 	msgQueue     chan *Packet
 	msgRelay     chan *Packet
 	msgRelayDone chan uint32
@@ -116,13 +116,14 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		config:       cfg,
 		clientPeers:  cmap.New(),
 		serverPeers:  cmap.New(),
+		location:     cmap.New(),
 		groups:       make(map[wire.Addr]mapset.Set, 100),
 		register:     make(chan *addPeer, 1),
 		unregister:   make(chan *delPeer, 1),
 		msgQueue:     make(chan *Packet, 1),
 		msgRelay:     make(chan *Packet, 1),
 		msgRelayDone: make(chan uint32, 1),
-		commandChan:  make(chan *wire.Message, 1000),
+		commandChan:  make(chan *Packet, 1000),
 		messageLog:   messageLog,
 		quit:         make(chan struct{}),
 		Server: &Server{
@@ -133,6 +134,8 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	}
 
 	go httplisten(hub, &cfg.Server)
+
+	log.Printf("server[%v] start up", serverAddr.String())
 
 	return hub, nil
 }
@@ -229,14 +232,14 @@ func (h *Hub) peerHandler() {
 				if elem, ok := h.clientPeers.Get(peer.ID); ok {
 					oldpeer := elem.(*ClientPeer)
 					// 如果节点已经登陆，就把前一个 peer踢下线
-					msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
+					msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
 						PeerID: oldpeer.ID,
 					})
 
 					fmt.Printf("kill client:%v \n", oldpeer.ID)
 					oldpeer.PushMessage(msg, nil)
 				}
-				msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{})
+				msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{})
 				msg.Header.Dest = peer.Addr // same addr
 				h.broadcast(msg)            // 广播此消息到其它服务器节点
 
@@ -253,18 +256,16 @@ func (h *Hub) peerHandler() {
 			case *ClientPeer:
 				peer := p.peer.(*ClientPeer)
 				if elem, ok := h.clientPeers.Get(peer.ID); ok {
-					p := elem.(*ClientPeer)
-					if p.Peer.ID != peer.Peer.ID {
+					alivePeer := elem.(*ClientPeer)
+					if alivePeer.RemoteAddr != peer.RemoteAddr { // this two peer are different connection, ignore unregister
 						continue
 					}
 					h.clientPeers.Remove(peer.ID)
-					log.Printf("client %v disconnected", peer.ID)
 				}
 			case *ServerPeer:
 				peer := p.peer.(*ServerPeer)
 				if h.serverPeers.Has(peer.ID) {
 					h.serverPeers.Remove(peer.ID)
-					log.Printf("server %v disconnected", peer.ID)
 				}
 			}
 			if p.done != nil {
@@ -296,11 +297,21 @@ func (h *Hub) messageQueueHandler() {
 	for {
 		select {
 		case msg := <-h.msgQueue:
+			header := msg.message.Header
+			if header.Dest.IsEmpty() || header.Dest == h.Server.Addr {
+				h.commandChan <- msg
+				continue
+			}
 			buf := &bytes.Buffer{}
-			msg.message.Encode(buf)
-			err := h.messageLog.Write(buf.Bytes())
-			if msg.err != nil {
-				msg.err <- err // error or nil
+			err := msg.message.Encode(buf)
+			if err != nil {
+				msg.err <- err
+				continue
+			}
+			err = h.messageLog.Write(buf.Bytes())
+			if err != nil {
+				msg.err <- err
+				continue
 			}
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-h.msgRelayDone:
@@ -331,7 +342,12 @@ func (h *Hub) messageHandler() {
 					// A locating message is sent to the source server , let it know the dest client is in this server.
 					// so the server can directly send the same dest message to this server on next time
 					if h.clientPeers.Has(dest.String()) {
-
+						loc := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoc, &wire.MsgLoc{
+							Peer: header.Dest,
+							In:   h.Server.Addr,
+						})
+						ele, _ := h.serverPeers.Get(msg.fromID)
+						ele.(*ServerPeer).PushMessage(loc, nil)
 					}
 				}
 			}
@@ -378,13 +394,13 @@ func (h *Hub) commandHandler() {
 	log.Println("start commandHandler")
 	for {
 		select {
-		case message := <-h.commandChan:
-			header := message.Header
+		case msg := <-h.commandChan:
+			header := msg.message.Header
 
 			// 处理消息逻辑
 			switch header.Command {
 			case wire.MsgTypeGroupInOut:
-				msgGroup := message.Body.(*wire.MsgGroupInOut)
+				msgGroup := msg.message.Body.(*wire.MsgGroupInOut)
 				for _, group := range msgGroup.Groups {
 					if _, ok := h.groups[group]; !ok {
 						h.groups[group] = mapset.NewSet()
@@ -401,6 +417,12 @@ func (h *Hub) commandHandler() {
 						}
 					}
 				}
+			case wire.MsgTypeLoc: //收到定位消息
+				msgLoc := msg.message.Body.(*wire.MsgLoc)
+				h.location.Set(msgLoc.Peer.String(), msgLoc.In.String)
+			case wire.MsgTypeOffline: //收到节点离线消息
+				msgOffline := msg.message.Body.(*wire.MsgOffline)
+				h.location.Remove(msgOffline.Peer.String())
 			}
 		}
 	}
@@ -425,12 +447,12 @@ func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
 			client.(*ClientPeer).PushMessage(message, nil)
 		} else {
 			// 如果发现用户不存在就清理掉
-			msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeGroupInOut, &wire.MsgGroupInOut{
+			msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeGroupInOut, &wire.MsgGroupInOut{
 				InOut:  wire.GroupOut,
 				Groups: []wire.Addr{group},
 			})
 			msg.Header.Source = addr
-			h.commandChan <- msg
+			h.commandChan <- &Packet{message: msg}
 		}
 	}
 }
@@ -446,6 +468,9 @@ func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
 
 // broadcast message to all server
 func (h *Hub) broadcast(message *wire.Message) {
+	if h.serverPeers.Count() == 0 {
+		return
+	}
 	// errchan := make(chan error, h.serverPeers.Count())
 	for elem := range h.serverPeers.Iter() {
 		elem.Val.(*ServerPeer).PushMessage(message, nil)
@@ -500,7 +525,6 @@ func (h *Hub) clean() {
 	for elem := range h.clientPeers.Iter() {
 		peer := elem.Val.(*ClientPeer)
 		peer.Close()
-
 	}
 
 	for elem := range h.serverPeers.Iter() {

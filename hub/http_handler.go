@@ -89,7 +89,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	<-done
 
 	log.Printf("client %v connected", peerID)
-	ack, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{PeerID: peerID})
+	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{PeerID: peerID})
 	clientPeer.PushMessage(ack, nil)
 }
 
@@ -109,7 +109,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", addrstr, URL.String()), digest) {
+	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v", addrstr, URL.String()), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -146,15 +146,12 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	// fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
 
-	msg, err := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
+	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
 		Text:  body.Text,
 		Type:  body.Type,
 		Extra: body.Extra,
 	})
-	if err != nil {
-		fmt.Fprint(w, err.Error())
-		return
-	}
+
 	source, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
 	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
 	msg.Header.Source = *source

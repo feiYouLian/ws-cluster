@@ -47,7 +47,11 @@ func (p *ServerPeer) OnMessage(message *wire.Message) error {
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
 	// log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
-	p.closechan <- &delPeer{peer: p}
+
+	done := make(chan struct{})
+	p.closechan <- &delPeer{peer: p, done: done}
+	<-done
+	log.Printf("client %v disconnected", p.ID)
 
 	// // 尝试重连
 	// for p.reconnectTimes < reconnectTimes {
@@ -74,7 +78,7 @@ func (p *ServerPeer) connect() error {
 	host := p.HostServer
 	// 生成加密摘要
 	h := md5.New()
-	io.WriteString(h, fmt.Sprintf("%v%v%v", host.Addr.String(), host.URL.String()))
+	io.WriteString(h, fmt.Sprintf("%v%v", host.Addr.String(), host.URL.String()))
 	io.WriteString(h, host.Secret)
 	digest := hex.EncodeToString(h.Sum(nil))
 

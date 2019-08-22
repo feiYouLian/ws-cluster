@@ -6,13 +6,18 @@ import (
 )
 
 const (
-
+	// MsgTypeAck 应答消息
+	MsgTypeAck = uint8(1)
 	// MsgTypeChat 单聊消息
 	MsgTypeChat = uint8(3)
 	// MsgTypeGroupInOut join or leave group
 	MsgTypeGroupInOut = uint8(5)
 	// MsgTypeKill kill a client
 	MsgTypeKill = uint8(7)
+	// MsgTypeLoc locate message
+	MsgTypeLoc = uint8(9)
+	// MsgTypeOffline offline notice message
+	MsgTypeOffline = uint8(11)
 	// MsgTypeLoginAck login ack
 	MsgTypeLoginAck = uint8(100)
 )
@@ -121,6 +126,8 @@ func (m *Message) Encode(w io.Writer) error {
 func MakeEmptyBody(Command uint8) (Protocol, error) {
 	var body Protocol
 	switch Command {
+	case MsgTypeAck:
+		body = &MsgAck{}
 	case MsgTypeChat:
 		body = &Msgchat{}
 	case MsgTypeGroupInOut:
@@ -129,6 +136,10 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgKill{}
 	case MsgTypeLoginAck:
 		body = &MsgLoginAck{}
+	case MsgTypeLoc:
+		body = &MsgLoc{}
+	case MsgTypeOffline:
+		body = &MsgOffline{}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
 	}
@@ -136,11 +147,11 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 }
 
 // MakeEmptyHeaderMessage Make a Message which header is empty
-func MakeEmptyHeaderMessage(Command uint8, body Protocol) (*Message, error) {
+func MakeEmptyHeaderMessage(Command uint8, body Protocol) *Message {
 	return &Message{
 		Header: &Header{
 			Command: Command,
 		},
 		Body: body,
-	}, nil
+	}
 }

@@ -200,7 +200,7 @@ Loop:
 		select {
 		case msg, _ := <-p.outQueue:
 			header := msg.message.Header
-			if header.Seq == 0 {
+			if header.Seq == 0 { // message sender set a Seq
 				p.autoSeq++
 				header.Seq = p.autoSeq
 			}

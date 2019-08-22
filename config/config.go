@@ -71,11 +71,11 @@ type PeerConfig struct {
 
 // Config 系统配置信息，包括 redis 配置， mongodb 配置
 type Config struct {
-	Server       ServerConfig
-	Redis        RedisConfig
-	Mysql        MysqlConfig
-	Peer         PeerConfig
-	Cache        Cache
+	Server ServerConfig
+	// Redis        RedisConfig
+	Mysql MysqlConfig
+	Peer  PeerConfig
+	// Cache        Cache
 	MessageStore database.MessageStore
 }
 
@@ -101,12 +101,12 @@ func LoadConfig() (*Config, error) {
 	}
 	config.Server.MessageFile = filepath.Join(dataDir, defaultMessageName)
 
-	section = cfg.Section("redis")
-	config.Redis = RedisConfig{}
-	err = section.MapTo(&config.Redis)
-	if err != nil {
-		return nil, err
-	}
+	// section = cfg.Section("redis")
+	// config.Redis = RedisConfig{}
+	// err = section.MapTo(&config.Redis)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	section = cfg.Section("mysql")
 	config.Mysql = MysqlConfig{}

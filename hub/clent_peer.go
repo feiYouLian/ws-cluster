@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,26 +21,25 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
-	err := make(chan error)
-	p.msgchan <- &Packet{from: fromClient, fromID: p.ID, message: message, err: err}
+	errchan := make(chan error)
+	p.msgchan <- &Packet{from: fromClient, fromID: p.ID, message: message, err: errchan}
 
-	// header := message.Header
+	err := <-errchan
+	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeAck, &wire.MsgAck{
+		State: wire.AckDone,
+		Err:   err.Error(),
+	})
+	p.PushMessage(ack, nil)
 
-	// if !header.Dest.IsEmpty() {
-	// 	log.Printf("message %v to %v , Type: %v", header.Source.String(), header.Dest.String(), header.Command)
-	// 	// errchan := make(chan error)
-	// 	// 消息转发
-
-	// } else {
-	// 	p.hub.commandChan <- message
-	// }
-
-	return <-err
+	return nil
 }
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	p.closechan <- &delPeer{peer: p, done: nil}
+	done := make(chan struct{})
+	p.closechan <- &delPeer{peer: p, done: done}
+	<-done
+	log.Printf("client %v disconnected", p.ID)
 	return nil
 }
 
