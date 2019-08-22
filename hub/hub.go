@@ -39,8 +39,7 @@ type Packet struct {
 
 // Server 服务器对象
 type Server struct {
-	// ID 服务器Id, 自动生成，缓存到file 中，重启时 ID 不变
-	ID     string
+	Addr   wire.Addr // logic address
 	URL    *url.URL
 	Secret string
 }
@@ -69,7 +68,7 @@ type Hub struct {
 	// serverPeers 缓存服务端节点数据
 	serverPeers cmap.ConcurrentMap
 	groups      map[wire.Addr]mapset.Set
-	location    cmap.ConcurrentMap // client location to server
+	location    cmap.ConcurrentMap // client location in server
 
 	messageLog *filelog.FileLog
 
@@ -111,7 +110,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	serverAddr, _ := wire.NewAddr(wire.AddrServer, uint32(cfg.Server.Domain), cfg.Server.ID)
 	hub := &Hub{
 		upgrader:     upgrader,
 		config:       cfg,
@@ -127,9 +126,9 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		messageLog:   messageLog,
 		quit:         make(chan struct{}),
 		Server: &Server{
-			ID:     cfg.Server.ID,
+			Addr:   *serverAddr,
 			Secret: cfg.Server.Secret,
-			URL:    &url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", wire.GetOutboundIP().String(), cfg.Server.Listen), Path: "/server"},
+			URL:    &url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", wire.GetOutboundIP().String(), cfg.Server.ListenPort), Path: "/server"},
 		},
 	}
 
@@ -324,17 +323,28 @@ func (h *Hub) messageHandler() {
 		case msg := <-h.msgRelay:
 			header := msg.message.Header
 			dest := header.Dest
-			// log.Println("messagehandler: a message to ", header.To)
+			if msg.from == fromServer { //如果是转发过来的消息，就记录发送者的定位
+				source := header.Source.String()
+				if !h.location.Has(source) {
+					h.location.Set(header.Source.String(), msg.fromID)
+
+					// A locating message is sent to the source server , let it know the dest client is in this server.
+					// so the server can directly send the same dest message to this server on next time
+					if h.clientPeers.Has(dest.String()) {
+
+					}
+				}
+			}
 			if dest.Type() == wire.AddrPeer {
 				// 在当前服务器节点中找到了目标客户端
 				if client, ok := h.clientPeers.Get(dest.String()); ok {
 					client.(*ClientPeer).PushMessage(msg.message, nil)
 					continue
 				}
-				if msg.from == fromServer { // throw out message
+				if msg.from == fromServer { //dest no found in this server .then throw out message
 					continue
 				}
-
+				// message sent from client directly
 				serverID, has := h.location.Get(dest.String())
 				if !has { // 如果找不到定位，广播此消息
 					h.broadcast(msg.message)
@@ -482,19 +492,19 @@ func (h *Hub) Close() {
 
 // clean clean hub
 func (h *Hub) clean() {
-	if h.config.Server.Mode == config.ModeCluster {
-		h.serverCache.DelServer(h.ServerID)
-		log.Println("clean server in cache")
-	}
+	// if h.config.Server.Mode == config.ModeCluster {
+	// 	h.serverCache.DelServer(h.ServerID)
+	// 	log.Println("clean server in cache")
+	// }
 
 	for elem := range h.clientPeers.Iter() {
 		peer := elem.Val.(*ClientPeer)
 		peer.Close()
 
-		h.clientCache.DelClient(peer.entity.ID)
 	}
 
-	for _, peer := range h.serverPeers {
+	for elem := range h.serverPeers.Iter() {
+		peer := elem.Val.(*ServerPeer)
 		peer.Close()
 	}
 

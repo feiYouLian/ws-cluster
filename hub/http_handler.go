@@ -35,9 +35,8 @@ func httplisten(hub *Hub, conf *config.ServerConfig) {
 		httpQueryClientOnlineHandler(hub, w, r)
 	})
 
-	listenIP := conf.Addr
-	log.Println("listen on ", fmt.Sprintf("%s:%d", listenIP, conf.Listen))
-	err := http.ListenAndServe(fmt.Sprintf("%s:%d", listenIP, conf.Listen), nil)
+	log.Println("listen on ", fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort))
+	err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort), nil)
 
 	if err != nil {
 		log.Println("ListenAndServe: ", err)
@@ -96,7 +95,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	ID := r.Header.Get("id")
+	addrstr := r.Header.Get("addr")
 	URL, err := url.Parse(r.Header.Get("url"))
 	if err != nil {
 		handleHTTPErr(w, err)
@@ -104,13 +103,13 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	digest := r.Header.Get("digest")
 
-	if ID == "" {
-		// 错误处理，断开
-		w.WriteHeader(http.StatusBadRequest)
+	serverAddr, err := wire.NewServerAddr(addrstr)
+	if err != nil {
+		handleHTTPErr(w, err)
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", ID, URL.String()), digest) {
+	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v%v", addrstr, URL.String()), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -122,7 +121,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	serverPeer, err := bindServerPeer(hub, conn, &Server{
-		ID:     ID,
+		Addr:   *serverAddr,
 		URL:    URL,
 		Secret: hub.config.Server.Secret,
 	}, r.RemoteAddr)
@@ -135,7 +134,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	hub.register <- &addPeer{peer: serverPeer, done: nil}
 	<-done
 
-	log.Printf("server %v connected", ID)
+	log.Printf("server %v connected", serverAddr.String())
 }
 
 // 处理 http 过来的消息发送

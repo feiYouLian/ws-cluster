@@ -74,12 +74,12 @@ func (p *ServerPeer) connect() error {
 	host := p.HostServer
 	// 生成加密摘要
 	h := md5.New()
-	io.WriteString(h, fmt.Sprintf("%v%v%v", host.ID, host.URL.String()))
+	io.WriteString(h, fmt.Sprintf("%v%v%v", host.Addr.String(), host.URL.String()))
 	io.WriteString(h, host.Secret)
 	digest := hex.EncodeToString(h.Sum(nil))
 
 	header := http.Header{}
-	header.Add("id", host.ID)
+	header.Add("id", host.Addr.String())
 	header.Add("url", host.URL.String())
 	header.Add("digest", digest)
 
@@ -110,7 +110,7 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 		closechan:  h.unregister,
 	}
 
-	peer := peer.NewPeer(server.ID, "",
+	peer := peer.NewPeer(server.Addr.String(), "",
 		&peer.Config{
 			Listeners: &peer.MessageListeners{
 				OnMessage:    serverPeer.OnMessage,
@@ -138,7 +138,7 @@ func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr str
 		closechan:  h.unregister,
 	}
 
-	peer := peer.NewPeer(server.ID, remoteAddr,
+	peer := peer.NewPeer(server.Addr.String(), remoteAddr,
 		&peer.Config{
 			Listeners: &peer.MessageListeners{
 				OnMessage:    serverPeer.OnMessage,

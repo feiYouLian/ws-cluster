@@ -34,9 +34,10 @@ const (
 
 // ServerConfig ServerConfig
 type ServerConfig struct {
-	ID          string `description:"server id"`
-	Addr        string
-	Listen      int
+	ID          string `description:"server logic addr"`
+	Domain      int
+	ListenIP    string
+	ListenPort  int
 	Secret      string
 	Origin      string
 	Mode        int
@@ -137,7 +138,7 @@ func BuildServerID() (string, error) {
 	// deal server id
 	_, err := os.Stat(defaultIDConfigFile)
 	if err != nil {
-		sid := fmt.Sprintf("%d", time.Now().UnixNano())
+		sid := fmt.Sprintf("%d", time.Now().Unix())
 		ioutil.WriteFile(defaultIDConfigFile, []byte(sid), 0644)
 	}
 	fb, err := ioutil.ReadFile(defaultIDConfigFile)

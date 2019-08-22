@@ -23,15 +23,18 @@ var (
 const (
 	// AddrPeer peer address
 	AddrPeer = byte(1)
+	// AddrServer is server addr
+	AddrServer = byte(2)
 	// AddrGroup group address
 	AddrGroup = byte(3)
 	// AddrBroadcast broadcast address
-	AddrBroadcast = byte(5)
+	AddrBroadcast = byte(7) //max value
 )
 
 // AddrMap addr byte to char
 var AddrMap = map[byte]rune{
 	AddrPeer:      'p',
+	AddrServer:    's',
 	AddrGroup:     'g',
 	AddrBroadcast: 'b',
 }
@@ -79,6 +82,13 @@ func NewGroupAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 3)
 	domain, _ := strconv.Atoi(addrs[1])
 	return NewAddr(AddrGroup, uint32(domain), addrs[2])
+}
+
+// NewServerAddr new a server address
+func NewServerAddr(addr string) (*Addr, error) {
+	addrs := strings.SplitN(addr, "/", 3)
+	domain, _ := strconv.Atoi(addrs[1])
+	return NewAddr(AddrServer, uint32(domain), addrs[2])
 }
 
 // Decode Decode reader to Header
