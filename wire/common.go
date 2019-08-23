@@ -76,34 +76,41 @@ func NewAddr(Typ byte, domain uint32, device byte, address string) (*Addr, error
 	copy(addr[1:5], bs)
 	addr[5] = device
 	copy(addr[6:], addrBytes)
+
 	return addr, nil
 }
 
 // NewPeerAddr new a peer address
 func NewPeerAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 4)
-	if len(addrs) != 3 {
+	addrs := strings.SplitN(addr, "/", 5)
+	if len(addrs) != 5 {
 		return nil, ErrInvaildAddress
 	}
-	domain, _ := strconv.Atoi(addrs[1])
-	device, _ := strconv.Atoi(addrs[2])
-	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[3])
+	domain, _ := strconv.Atoi(addrs[2])
+	device, _ := strconv.Atoi(addrs[3])
+	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[4])
 }
 
 // NewGroupAddr new a group address
 func NewGroupAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 4)
-	domain, _ := strconv.Atoi(addrs[1])
-	device, _ := strconv.Atoi(addrs[2])
-	return NewAddr(AddrGroup, uint32(domain), byte(device), addrs[3])
+	addrs := strings.SplitN(addr, "/", 5)
+	if len(addrs) != 5 {
+		return nil, ErrInvaildAddress
+	}
+	domain, _ := strconv.Atoi(addrs[2])
+	device, _ := strconv.Atoi(addrs[3])
+	return NewAddr(AddrGroup, uint32(domain), byte(device), addrs[4])
 }
 
 // NewServerAddr new a server address
 func NewServerAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 4)
-	domain, _ := strconv.Atoi(addrs[1])
-	device, _ := strconv.Atoi(addrs[2])
-	return NewAddr(AddrServer, uint32(domain), byte(device), addrs[3])
+	addrs := strings.SplitN(addr, "/", 5)
+	if len(addrs) != 5 {
+		return nil, ErrInvaildAddress
+	}
+	domain, _ := strconv.Atoi(addrs[2])
+	device, _ := strconv.Atoi(addrs[3])
+	return NewAddr(AddrServer, uint32(domain), byte(device), addrs[4])
 }
 
 // Decode Decode reader to Header
@@ -148,7 +155,7 @@ func (addr *Addr) String() string {
 	if addr.Type() == AddrBroadcast {
 		return fmt.Sprintf("/%c/%v", AddrMap[addr.Type()], addr.Domain())
 	}
-	return fmt.Sprintf("/%c/%v/%v", AddrMap[addr.Type()], addr.Domain(), addr.Address())
+	return fmt.Sprintf("/%c/%v/%v/%v", AddrMap[addr.Type()], addr.Domain(), addr.Device(), addr.Address())
 }
 
 // IsEmpty address is empty

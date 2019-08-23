@@ -44,7 +44,7 @@ func Test_sendtoclient(t *testing.T) {
 	}()
 	sysaddr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, "sys")
 
-	syspeer, err := newClientPeer(secret, wshosts[0], sysaddr, false, msgchan)
+	syspeer, err := newClientPeer(secret, wshosts[0], *sysaddr, false, msgchan)
 	if err != nil {
 		log.Println(err)
 		return

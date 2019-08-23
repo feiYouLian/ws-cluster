@@ -34,27 +34,23 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, err: errchan}
 
 	err := <-errchan
+	if err == nil {
+		return nil
+	}
 	if err == ErrPeerNoFound {
 		return err
 	}
-	var ack *wire.MsgAck
-	if err != nil {
-		ack = &wire.MsgAck{
-			State: wire.AckFail,
-			Err:   err.Error(),
-		}
-	} else {
-		ack = &wire.MsgAck{
-			State: wire.AckSucc,
-			Err:   "",
-		}
+	header := message.Header
+	if header.Command == wire.MsgTypeChat {
+		ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
+			Err: err.Error(),
+		})
+		ackmessage.Header.Source = p.Server.Addr
+		ackmessage.Header.Dest = header.Source
+		ackmessage.Header.AckSeq = message.Header.Seq
+		p.PushMessage(ackmessage, nil)
 	}
-	ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, ack)
-	ackmessage.Header.Source = p.Server.Addr
-	ackmessage.Header.Dest = p.Addr
-	ackmessage.Header.AckSeq = message.Header.Seq
 
-	p.PushMessage(ackmessage, nil)
 	return nil
 }
 
@@ -75,7 +71,7 @@ func newClientPeer(addr wire.Addr, remoteAddr string, h *Hub, conn *websocket.Co
 		Groups:     mapset.NewThreadUnsafeSet(),
 		FriServers: mapset.NewThreadUnsafeSet(),
 	}
-
+	log.Println("new peer", addr)
 	peer := peer.NewPeer(addr.String(), remoteAddr, &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,

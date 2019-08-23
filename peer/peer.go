@@ -159,7 +159,7 @@ func (p *Peer) inMessageHandler() {
 			}
 			err = p.config.Listeners.OnMessage(message)
 			if err != nil {
-				log.Println(err)
+				log.Println("peer.go line:162 ", p.ID, err)
 			}
 
 		}
@@ -267,7 +267,6 @@ Loop:
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Println(err)
 				break Loop
 			}
 		case <-p.queueQuit:
@@ -278,28 +277,20 @@ Loop:
 }
 
 // PushMessage 把消息写到队列中，等待处理。如果连接已经关系，消息会被丢掉
-func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- error) {
+func (p *Peer) PushMessage(message *wire.Message, doneChan chan error) {
+	if doneChan == nil { //throw err
+		doneChan = make(chan error)
+		go func() {
+			<-doneChan
+		}()
+	}
+
 	if !p.IsConnected() {
-		if doneChan != nil {
-			go func() {
-				doneChan <- ErrPeerHasClosed
-			}()
-		}
+		doneChan <- ErrPeerHasClosed
 		return
 	}
-	if doneChan == nil {
-		errchan := make(chan error, 1)
-		go func() {
-			err := <-errchan
-			if err != nil {
-				log.Println(err)
-			}
-		}()
 
-		p.outQueue <- outMessage{message: message, done: errchan}
-	} else {
-		p.outQueue <- outMessage{message: message, done: doneChan}
-	}
+	p.outQueue <- outMessage{message: message, done: doneChan}
 }
 
 // Close close conn

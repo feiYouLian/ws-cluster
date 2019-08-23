@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
@@ -47,7 +48,7 @@ func httplisten(hub *Hub, conf *config.ServerConfig) {
 // 处理来自客户端节点的连接
 func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	addr := q.Get("addr") //  /p/domain/id
+	addr := q.Get("addr") //  /p/domain/1/id
 	nonce := q.Get("nonce")
 	digest := q.Get("digest")
 
@@ -92,7 +93,10 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("client %v connected", peerID)
-	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{PeerID: peerID})
+	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{
+		RemoteAddr: r.RemoteAddr,
+		LoginAt:    uint64(time.Now().UnixNano()),
+	})
 	clientPeer.PushMessage(ack, nil)
 }
 
@@ -199,6 +203,8 @@ func checkDigest(secret, text, digest string) bool {
 }
 
 func handleHTTPErr(w http.ResponseWriter, err error) {
-	fmt.Fprint(w, err.Error())
-	w.WriteHeader(http.StatusBadRequest)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	log.Println(err)
 }

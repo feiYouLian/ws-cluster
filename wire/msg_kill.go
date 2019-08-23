@@ -4,13 +4,13 @@ import "io"
 
 // MsgKill 通知连接下线
 type MsgKill struct {
-	PeerID string
+	LoginAt uint64
 }
 
 // Decode Decode
 func (m *MsgKill) Decode(r io.Reader) error {
 	var err error
-	if m.PeerID, err = ReadString(r); err != nil {
+	if m.LoginAt, err = ReadUint64(r); err != nil {
 		return err
 	}
 	return nil
@@ -19,7 +19,7 @@ func (m *MsgKill) Decode(r io.Reader) error {
 // Encode Encode
 func (m *MsgKill) Encode(w io.Writer) error {
 	var err error
-	if err = WriteString(w, m.PeerID); err != nil {
+	if err = WriteUint64(w, m.LoginAt); err != nil {
 		return err
 	}
 	return nil

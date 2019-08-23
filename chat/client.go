@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
 	"sync"
 	"time"
@@ -66,13 +65,13 @@ type ClientPeer struct {
 	*peer.Peer
 	// AutoConn 是否自动重连
 	AutoConn   bool
-	addr       *wire.Addr
+	addr       wire.Addr
 	serverHost string
 	secret     string
 	message    chan *wire.Message
 }
 
-func newClientPeer(secret, serverHost string, clientAddr *wire.Addr, autoConn bool, msg chan *wire.Message) (*ClientPeer, error) {
+func newClientPeer(secret, serverHost string, clientAddr wire.Addr, autoConn bool, msg chan *wire.Message) (*ClientPeer, error) {
 
 	clientPeer := &ClientPeer{
 		AutoConn:   autoConn,
@@ -90,7 +89,23 @@ func newClientPeer(secret, serverHost string, clientAddr *wire.Addr, autoConn bo
 
 // OnMessage OnMessage
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
+	if message.Header.Command == wire.MsgTypeLoginAck {
+		addpeer <- p
+		return nil
+	}
 	p.message <- message
+
+	if message.Header.Command == wire.MsgTypeChat {
+		ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
+			State: wire.AckSucc,
+		})
+		ackmessage.Header.Source = p.addr
+		ackmessage.Header.Dest = message.Header.Source
+		ackmessage.Header.AckSeq = message.Header.Seq
+		p.PushMessage(ackmessage, nil)
+		log.Println("ack to ", message.Header.Source)
+	}
+
 	return nil
 }
 
@@ -113,7 +128,10 @@ func (p *ClientPeer) OnDisconnect() error {
 				break
 			}
 		}
+	} else {
+		delpeer <- p
 	}
+
 	return nil
 }
 
@@ -123,7 +141,7 @@ func sendtoclient(peer *ClientPeer, to *wire.Addr) {
 		Type: 1,
 		Text: "hello",
 	})
-	msg.Header.Source = *peer.addr
+	msg.Header.Source = peer.addr
 	msg.Header.Dest = *to
 	peer.PushMessage(msg, done)
 	<-done
@@ -133,28 +151,41 @@ var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
 
 // var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
 var peerNum = 1
+var addpeer = make(chan *ClientPeer, 100)
+var delpeer = make(chan *ClientPeer, 100)
+var quit = make(chan bool, 1)
 
 func main() {
 	// listen sys.exit
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, os.Interrupt)
 
 	if len(os.Args) >= 2 {
 		peerNum, _ = strconv.Atoi(os.Args[1])
 	}
 	// peers := make(map[string]*ClientPeer, peerNum)
-	addpeer := make(chan *ClientPeer, 100)
+
 	msgchan := make(chan *wire.Message, 100)
 	intervalMsgNum := 0
 	totalMsgNum := 0
 	totalPeerNum := 0
+
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+
+	t1 := time.Now()
 	go func() {
 		for {
 			select {
 			case <-addpeer:
 				totalPeerNum++
+				if totalPeerNum == peerNum {
+					t2 := time.Now()
+					log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
+				}
+			case <-delpeer:
+				totalPeerNum--
+				if totalPeerNum == 0 {
+					quit <- true
+				}
 			case <-msgchan:
 				intervalMsgNum++
 				totalMsgNum++
@@ -168,26 +199,20 @@ func main() {
 	}()
 
 	ws := sync.WaitGroup{}
-	t1 := time.Now()
+
 	for index := 0; index < peerNum; index++ {
 		ws.Add(1)
 		go func(i int) {
 			wshost := wshosts[i%2]
 			addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
-			peer, err := newClientPeer(secret, wshost, addr, false, msgchan)
+			_, err := newClientPeer(secret, wshost, *addr, false, msgchan)
 			if err != nil {
 				log.Println(err)
-			} else {
-				addpeer <- peer
 			}
-
 			ws.Done()
 		}(index)
 	}
 	ws.Wait()
 
-	t2 := time.Now()
-	log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
-
-	<-sc
+	<-quit
 }
