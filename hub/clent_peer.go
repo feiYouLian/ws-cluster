@@ -71,7 +71,6 @@ func newClientPeer(addr wire.Addr, remoteAddr string, h *Hub, conn *websocket.Co
 		Groups:     mapset.NewThreadUnsafeSet(),
 		FriServers: mapset.NewThreadUnsafeSet(),
 	}
-	log.Println("new peer", addr)
 	peer := peer.NewPeer(addr.String(), remoteAddr, &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
