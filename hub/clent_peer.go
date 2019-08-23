@@ -4,6 +4,7 @@ import (
 	"log"
 	"time"
 
+	mapset "github.com/deckarep/golang-set"
 	"github.com/gorilla/websocket"
 	"github.com/ws-cluster/peer"
 	"github.com/ws-cluster/wire"
@@ -13,41 +14,66 @@ import (
 type ClientPeer struct {
 	*peer.Peer
 	Addr    wire.Addr
-	LoginAt time.Time //second
+	LoginAt time.Time  //second
+	Server  *Server    // the server you logined in
+	Groups  mapset.Set //all your groups
+	//record all server peer which sent message to you
+	// you must notice them by sending a offline message when you logout
+	FriServers mapset.Set
 
-	msgchan   chan<- *Packet
-	closechan chan<- *delPeer
+	packet chan<- *Packet
 }
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	errchan := make(chan error)
-	p.msgchan <- &Packet{from: fromClient, fromID: p.ID, message: message, err: errchan}
+	log.Println("receive msg", message.Header.String())
+	if message.Header.Dest.IsEmpty() { // is command message
+		message.Header.Dest = p.Server.Addr
+	}
+	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, err: errchan}
 
 	err := <-errchan
-	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeAck, &wire.MsgAck{
-		State: wire.AckDone,
-		Err:   err.Error(),
-	})
-	p.PushMessage(ack, nil)
+	if err == ErrPeerNoFound {
+		return err
+	}
+	var ack *wire.MsgAck
+	if err != nil {
+		ack = &wire.MsgAck{
+			State: wire.AckFail,
+			Err:   err.Error(),
+		}
+	} else {
+		ack = &wire.MsgAck{
+			State: wire.AckSucc,
+			Err:   "",
+		}
+	}
+	ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, ack)
+	ackmessage.Header.Source = p.Server.Addr
+	ackmessage.Header.Dest = p.Addr
+	ackmessage.Header.AckSeq = message.Header.Seq
 
+	p.PushMessage(ackmessage, nil)
 	return nil
 }
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	done := make(chan struct{})
-	p.closechan <- &delPeer{peer: p, done: done}
-	<-done
+	errchan := make(chan error)
+	p.packet <- &Packet{from: p.Addr, use: useForDelClientPeer, content: p, err: errchan}
+	<-errchan
 	log.Printf("client %v disconnected", p.ID)
 	return nil
 }
 
 func newClientPeer(addr wire.Addr, remoteAddr string, h *Hub, conn *websocket.Conn) (*ClientPeer, error) {
 	clientPeer := &ClientPeer{
-		msgchan:   h.msgQueue,
-		closechan: h.unregister,
-		Addr:      addr,
+		packet:     h.packetQueue,
+		Addr:       addr,
+		Server:     h.Server,
+		Groups:     mapset.NewThreadUnsafeSet(),
+		FriServers: mapset.NewThreadUnsafeSet(),
 	}
 
 	peer := peer.NewPeer(addr.String(), remoteAddr, &peer.Config{

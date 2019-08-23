@@ -44,7 +44,7 @@ func newPeer(addr, serverhost, secret string, OnMessage func(message *wire.Messa
 		ID: addr,
 	}
 
-	peer := peer.NewPeer(fmt.Sprintf("C%v", client.ID), &peer.Config{
+	peer := peer.NewPeer(client.ID, "", &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    OnMessage,
 			OnDisconnect: OnDisconnect,
@@ -118,8 +118,8 @@ func (p *ClientPeer) OnDisconnect() error {
 }
 
 func sendtoclient(peer *ClientPeer, to *wire.Addr) {
-	done := make(chan struct{})
-	msg, _ := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
+	done := make(chan error)
+	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
 		Type: 1,
 		Text: "hello",
 	})
@@ -132,12 +132,13 @@ func sendtoclient(peer *ClientPeer, to *wire.Addr) {
 var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
 
 // var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
+var peerNum = 1
 
 func main() {
 	// listen sys.exit
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt)
-	var peerNum = 1
+
 	if len(os.Args) >= 2 {
 		peerNum, _ = strconv.Atoi(os.Args[1])
 	}
@@ -158,7 +159,9 @@ func main() {
 				intervalMsgNum++
 				totalMsgNum++
 			case <-ticker.C:
-				log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,总节点数：%v", intervalMsgNum, totalMsgNum, totalPeerNum)
+				if intervalMsgNum > 0 {
+					log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,总节点数：%v", intervalMsgNum, totalMsgNum, totalPeerNum)
+				}
 				intervalMsgNum = 0
 			}
 		}
@@ -170,7 +173,7 @@ func main() {
 		ws.Add(1)
 		go func(i int) {
 			wshost := wshosts[i%2]
-			addr, _ := wire.NewAddr(wire.AddrPeer, 0, fmt.Sprintf("client_%v", i))
+			addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
 			peer, err := newClientPeer(secret, wshost, addr, false, msgchan)
 			if err != nil {
 				log.Println(err)

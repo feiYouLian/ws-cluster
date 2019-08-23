@@ -5,20 +5,22 @@ import (
 )
 
 const (
-	// AckDone server has deal with it
-	AckDone = uint8(1)
+	// AckSucc server success done it
+	AckSucc = uint8(1)
+	// AckFail server fail done it
+	AckFail = uint8(2)
 	// AckRead dest peer has read it
 	AckRead = uint8(3)
 )
 
-// MsgAck 单聊消息应答
-type MsgAck struct {
+// MsgChatResp 单聊消息应答
+type MsgChatResp struct {
 	State uint8
 	Err   string
 }
 
 // Decode Decode
-func (m *MsgAck) Decode(r io.Reader) error {
+func (m *MsgChatResp) Decode(r io.Reader) error {
 	var err error
 	if m.State, err = ReadUint8(r); err != nil {
 		return err
@@ -30,7 +32,7 @@ func (m *MsgAck) Decode(r io.Reader) error {
 }
 
 // Encode Encode
-func (m *MsgAck) Encode(w io.Writer) error {
+func (m *MsgChatResp) Encode(w io.Writer) error {
 	var err error
 	if err = WriteUint8(w, m.State); err != nil {
 		return err

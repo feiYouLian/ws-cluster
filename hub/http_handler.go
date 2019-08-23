@@ -82,12 +82,15 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
-	done := make(chan struct{}, 0)
+	errchan := make(chan error, 0)
 	// 注册节点到服务器
-	hub.register <- &addPeer{peer: clientPeer, done: done}
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddClientPeer, content: clientPeer, err: errchan}
 
-	<-done
-
+	err = <-errchan
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
 	log.Printf("client %v connected", peerID)
 	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{PeerID: peerID})
 	clientPeer.PushMessage(ack, nil)
@@ -130,9 +133,15 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	done := make(chan struct{}, 0)
-	hub.register <- &addPeer{peer: serverPeer, done: nil}
-	<-done
+	errchan := make(chan error, 0)
+	// 注册节点到服务器
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddServerPeer, content: serverPeer, err: errchan}
+
+	err = <-errchan
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
 
 	log.Printf("server %v connected", serverAddr.String())
 }
@@ -152,27 +161,34 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Extra: body.Extra,
 	})
 
-	source, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
-	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, body.From)
+	source, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, wire.DevicePhone, body.From)
+	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, wire.DevicePhone, body.To)
 	msg.Header.Source = *source
 	msg.Header.Dest = *dest
-	hub.msgQueue <- &Packet{from: fromClient, fromID: body.From, message: msg}
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg}
 	fmt.Fprint(w, "ok")
 }
 
 // 处理 http 过来的消息发送
 func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addrstr := r.URL.Query().Get("addr")
-	_, err := wire.NewPeerAddr(addrstr)
+	addr, err := wire.NewPeerAddr(addrstr)
 	if err != nil {
 		fmt.Fprint(w, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	if p, ok := hub.clientPeers.Get(addrstr); ok {
-		fmt.Fprint(w, p.(*ClientPeer).LoginAt)
-		return
-	}
-	fmt.Fprint(w, 0)
+	respchan := make(chan *wire.Message)
+
+	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryClient, &wire.MsgQueryClient{
+		Peer: *addr,
+	})
+	msg.Header.Dest = hub.Server.Addr
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
+
+	message := <-respchan
+
+	resp := message.Body.(*wire.MsgQueryClientResp)
+	fmt.Fprint(w, resp.LoginAt)
 }
 
 func checkDigest(secret, text, digest string) bool {

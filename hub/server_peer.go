@@ -19,18 +19,18 @@ import (
 // 这个对象用于处理跨服务节点消息收发。
 type ServerPeer struct {
 	*peer.Peer
+	Addr       wire.Addr
 	URL        *url.URL // connect url
 	IsOut      bool     // be connected server
 	HostServer *Server  // host
 
-	msgchan   chan<- *Packet
-	closechan chan<- *delPeer
+	packet chan<- *Packet
 }
 
 // OnMessage 接收消息
 func (p *ServerPeer) OnMessage(message *wire.Message) error {
 	err := make(chan error)
-	p.msgchan <- &Packet{from: fromServer, fromID: p.ID, message: message, err: err}
+	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, err: err}
 
 	// header := message.Header
 	// if !header.Dest.IsEmpty() {
@@ -48,10 +48,10 @@ func (p *ServerPeer) OnMessage(message *wire.Message) error {
 func (p *ServerPeer) OnDisconnect() error {
 	// log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
 
-	done := make(chan struct{})
-	p.closechan <- &delPeer{peer: p, done: done}
-	<-done
-	log.Printf("client %v disconnected", p.ID)
+	errchan := make(chan error)
+	p.packet <- &Packet{from: p.Addr, use: useForDelServerPeer, content: p, err: errchan}
+	<-errchan
+	log.Printf("server %v disconnected", p.ID)
 
 	// // 尝试重连
 	// for p.reconnectTimes < reconnectTimes {
@@ -107,11 +107,11 @@ func (p *ServerPeer) connect() error {
 func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 
 	serverPeer := &ServerPeer{
+		Addr:       server.Addr,
 		HostServer: h.Server,
 		URL:        server.URL,
 		IsOut:      true,
-		msgchan:    h.msgQueue,
-		closechan:  h.unregister,
+		packet:     h.packetQueue,
 	}
 
 	peer := peer.NewPeer(server.Addr.String(), "",
@@ -135,11 +135,11 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 // bindServerPeer 处理其它服务器节点过来的连接
 func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr string) (*ServerPeer, error) {
 	serverPeer := &ServerPeer{
+		Addr:       server.Addr,
 		HostServer: h.Server,
 		URL:        server.URL,
 		IsOut:      false,
-		msgchan:    h.msgQueue,
-		closechan:  h.unregister,
+		packet:     h.packetQueue,
 	}
 
 	peer := peer.NewPeer(server.Addr.String(), remoteAddr,

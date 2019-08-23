@@ -3,6 +3,7 @@ package peer
 import (
 	"bytes"
 	"container/list"
+	"errors"
 	"log"
 	"sync/atomic"
 	"time"
@@ -25,6 +26,9 @@ const (
 	// Maximum message size allowed from peer.
 	defaultMaxMessageSize = 512
 )
+
+// ErrPeerHasClosed peer has closed, pushmessage failed
+var ErrPeerHasClosed = errors.New("peer has closed")
 
 // MessageListeners 消息监听
 type MessageListeners struct {
@@ -278,13 +282,24 @@ func (p *Peer) PushMessage(message *wire.Message, doneChan chan<- error) {
 	if !p.IsConnected() {
 		if doneChan != nil {
 			go func() {
-				doneChan <- nil
+				doneChan <- ErrPeerHasClosed
 			}()
 		}
 		return
 	}
-	// log.Println("send message", message)
-	p.outQueue <- outMessage{message: message, done: doneChan}
+	if doneChan == nil {
+		errchan := make(chan error, 1)
+		go func() {
+			err := <-errchan
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+
+		p.outQueue <- outMessage{message: message, done: errchan}
+	} else {
+		p.outQueue <- outMessage{message: message, done: doneChan}
+	}
 }
 
 // Close close conn

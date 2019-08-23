@@ -6,10 +6,13 @@ import (
 )
 
 const (
-	// MsgTypeAck 应答消息
-	MsgTypeAck = uint8(1)
+	// MsgTypeLoginAck login ack
+	MsgTypeLoginAck = uint8(1)
 	// MsgTypeChat 单聊消息
 	MsgTypeChat = uint8(3)
+	// MsgTypeChatResp 应答消息
+	MsgTypeChatResp = uint8(4)
+
 	// MsgTypeGroupInOut join or leave group
 	MsgTypeGroupInOut = uint8(5)
 	// MsgTypeKill kill a client
@@ -18,8 +21,10 @@ const (
 	MsgTypeLoc = uint8(9)
 	// MsgTypeOffline offline notice message
 	MsgTypeOffline = uint8(11)
-	// MsgTypeLoginAck login ack
-	MsgTypeLoginAck = uint8(100)
+	// MsgTypeQueryClient MsgTypeQueryClient
+	MsgTypeQueryClient = uint8(13)
+	// MsgTypeQueryClientResp MsgTypeQueryClientResp
+	MsgTypeQueryClientResp = uint8(14)
 )
 
 // const (
@@ -88,6 +93,10 @@ func (h *Header) Encode(w io.Writer) error {
 	return nil
 }
 
+func (h *Header) String() string {
+	return fmt.Sprintf("Header[Seq:%v; %v->%v; Ack:%v Command:%v]", h.Seq, h.Source.String(), h.Dest.String(), h.AckSeq, h.Command)
+}
+
 // Message Message
 type Message struct {
 	Header *Header
@@ -126,10 +135,10 @@ func (m *Message) Encode(w io.Writer) error {
 func MakeEmptyBody(Command uint8) (Protocol, error) {
 	var body Protocol
 	switch Command {
-	case MsgTypeAck:
-		body = &MsgAck{}
 	case MsgTypeChat:
 		body = &Msgchat{}
+	case MsgTypeChatResp:
+		body = &MsgChatResp{}
 	case MsgTypeGroupInOut:
 		body = &MsgGroupInOut{}
 	case MsgTypeKill:
@@ -140,6 +149,10 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgLoc{}
 	case MsgTypeOffline:
 		body = &MsgOffline{}
+	case MsgTypeQueryClient:
+		body = &MsgQueryClient{}
+	case MsgTypeQueryClientResp:
+		body = &MsgQueryClientResp{}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
 	}

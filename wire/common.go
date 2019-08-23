@@ -46,49 +46,64 @@ var (
 	ErrInvaildAddress = errors.New("address is invaild")
 )
 
+var (
+	// DeviceNone DeviceNone
+	DeviceNone = byte(0) //none
+	// DevicePhone phone
+	DevicePhone = byte(1) //phone
+	// DevicePad pad
+	DevicePad = byte(2) //pad
+	// DevicePc pc
+	DevicePc = byte(3) // pc
+)
+
 // Addr Address
-// /  3 bit     / 5 bit   / 4 byte  / 27 byte /
-// / message type/ length   / domain / address /
+// /  3 bit     / 5 bit   / 4 byte  / 1byte / 26 byte /
+// / message type/ length   / domain / device /address /
 type Addr [32]byte
 
 // NewAddr new an Addr object
-func NewAddr(Typ byte, domain uint32, address string) (*Addr, error) {
+func NewAddr(Typ byte, domain uint32, device byte, address string) (*Addr, error) {
 	addr := new(Addr)
 	addrBytes := []byte(address)
 	addrlen := len(addrBytes)
-	if addrlen > 27 {
+	if addrlen > 26 {
 		return nil, ErrAddrOverflow
 	}
 	addr[0] = byte(Typ<<5) | byte(addrlen)
 	bs := make([]byte, 4)
 	littleEndian.PutUint32(bs, domain)
 	copy(addr[1:5], bs)
-	copy(addr[5:], addrBytes)
+	addr[5] = device
+	copy(addr[6:], addrBytes)
 	return addr, nil
 }
 
 // NewPeerAddr new a peer address
 func NewPeerAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 3)
+	addrs := strings.SplitN(addr, "/", 4)
 	if len(addrs) != 3 {
 		return nil, ErrInvaildAddress
 	}
 	domain, _ := strconv.Atoi(addrs[1])
-	return NewAddr(AddrPeer, uint32(domain), addrs[2])
+	device, _ := strconv.Atoi(addrs[2])
+	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[3])
 }
 
 // NewGroupAddr new a group address
 func NewGroupAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 3)
+	addrs := strings.SplitN(addr, "/", 4)
 	domain, _ := strconv.Atoi(addrs[1])
-	return NewAddr(AddrGroup, uint32(domain), addrs[2])
+	device, _ := strconv.Atoi(addrs[2])
+	return NewAddr(AddrGroup, uint32(domain), byte(device), addrs[3])
 }
 
 // NewServerAddr new a server address
 func NewServerAddr(addr string) (*Addr, error) {
-	addrs := strings.SplitN(addr, "/", 3)
+	addrs := strings.SplitN(addr, "/", 4)
 	domain, _ := strconv.Atoi(addrs[1])
-	return NewAddr(AddrServer, uint32(domain), addrs[2])
+	device, _ := strconv.Atoi(addrs[2])
+	return NewAddr(AddrServer, uint32(domain), byte(device), addrs[3])
 }
 
 // Decode Decode reader to Header
@@ -118,9 +133,14 @@ func (addr *Addr) Domain() uint32 {
 	return littleEndian.Uint32(addr[1:5])
 }
 
+// Device Device
+func (addr *Addr) Device() byte {
+	return addr[5]
+}
+
 // Address address detail
 func (addr *Addr) Address() string {
-	return string(addr[5 : addr.Len()+5])
+	return string(addr[6 : addr.Len()+6])
 }
 
 // Full full address
@@ -230,7 +250,6 @@ func WriteBytes(w io.Writer, buf []byte) error {
 	if err := WriteUint32(w, uint32(slen)); err != nil {
 		return err
 	}
-
 	if _, err := w.Write(buf); err != nil {
 		return err
 	}

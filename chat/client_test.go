@@ -30,9 +30,11 @@ func Test_sendtoclient(t *testing.T) {
 			case message := <-msgchan:
 				ackNum++
 				totalNum++
-				log.Printf(" from %v to %v Command:%v", message.Header.Source, message.Header.Dest, message.Header.Command)
+				log.Println(" header", message.Header.String())
 			case <-ticker.C:
-				log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
+				if ackNum > 0 {
+					log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
+				}
 				ackNum = 0
 				if totalNum == sendNum+1 {
 					quit <- true
@@ -40,7 +42,7 @@ func Test_sendtoclient(t *testing.T) {
 			}
 		}
 	}()
-	sysaddr, _ := wire.NewAddr(wire.AddrPeer, 0, "sys")
+	sysaddr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, "sys")
 
 	syspeer, err := newClientPeer(secret, wshosts[0], sysaddr, false, msgchan)
 	if err != nil {
@@ -50,7 +52,7 @@ func Test_sendtoclient(t *testing.T) {
 
 	t1 := time.Now()
 	for index := 0; index < sendNum; index++ {
-		addr, _ := wire.NewAddr(wire.AddrPeer, 0, fmt.Sprintf("client_%v", index%peerNum))
+		addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index%peerNum))
 		sendtoclient(syspeer, addr)
 		// time.Sleep(time.Second)
 	}
