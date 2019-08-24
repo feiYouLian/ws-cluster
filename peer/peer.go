@@ -271,6 +271,7 @@ Loop:
 			}
 		case <-p.queueQuit:
 			p.conn.WriteMessage(websocket.CloseMessage, nil)
+			time.Sleep(time.Millisecond * 10)
 			break Loop
 		}
 	}
