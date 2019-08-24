@@ -20,7 +20,7 @@ func Test_sendtoclient(t *testing.T) {
 	totalNum := 0
 	ticker := time.NewTicker(time.Second)
 
-	peerNum := 10
+	peerNum := 1000
 	sendNum := peerNum * 10
 
 	defer ticker.Stop()
@@ -28,9 +28,12 @@ func Test_sendtoclient(t *testing.T) {
 		for {
 			select {
 			case message := <-msgchan:
-				ackNum++
+				if message.Header.AckSeq > 0 {
+					ackNum++
+				}
+
 				totalNum++
-				log.Println(" header", message.Header.String())
+				// log.Println(" header", message.Header.String())
 			case <-ticker.C:
 				if ackNum > 0 {
 					log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)

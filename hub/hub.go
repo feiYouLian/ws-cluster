@@ -278,7 +278,6 @@ func (h *Hub) packetHandler() {
 			case useForRelayMessage:
 				message := packet.content.(*wire.Message)
 				header := message.Header
-				log.Println(header)
 				if packet.from.Type() == wire.AddrServer && header.Source.Type() == wire.AddrPeer { //如果是转发过来的消息，就记录发送者的定位
 					h.recordLocation(packet.from, message)
 				}

@@ -27,7 +27,7 @@ type ClientPeer struct {
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	errchan := make(chan error)
-	log.Println("receive msg", message.Header.String())
+	// log.Println("receive msg", message.Header.String())
 	if message.Header.Dest.IsEmpty() { // is command message
 		message.Header.Dest = p.Server.Addr
 	}

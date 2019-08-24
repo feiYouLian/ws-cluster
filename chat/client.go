@@ -103,7 +103,7 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 		ackmessage.Header.Dest = message.Header.Source
 		ackmessage.Header.AckSeq = message.Header.Seq
 		p.PushMessage(ackmessage, nil)
-		log.Println("ack to ", message.Header.Source)
+		// log.Println("ack to ", message.Header.Source)
 	}
 
 	return nil
@@ -147,7 +147,7 @@ func sendtoclient(peer *ClientPeer, to *wire.Addr) {
 	<-done
 }
 
-var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
+var wshosts = []string{"192.168.3.14:8380", "192.168.3.14:8380"}
 
 // var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
 var peerNum = 1
