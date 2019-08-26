@@ -69,14 +69,12 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	peerAddr, err := wire.NewPeerAddr(addr)
+	peerAddr, err := wire.ParsePeerAddr(addr)
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
 	}
-	peerID := fmt.Sprintf("%v@%v", addr, r.RemoteAddr)
 
-	log.Printf("client %v connecting ", peerID)
 	clientPeer, err := newClientPeer(*peerAddr, r.RemoteAddr, hub, conn)
 
 	if err != nil {
@@ -92,7 +90,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
-	log.Printf("client %v connected", peerID)
+	log.Printf("client %v@%v connected", addr, r.RemoteAddr)
 	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{
 		RemoteAddr: r.RemoteAddr,
 		LoginAt:    uint64(time.Now().UnixNano()),
@@ -110,7 +108,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 	digest := r.Header.Get("digest")
 
-	serverAddr, err := wire.NewServerAddr(addrstr)
+	serverAddr, err := wire.ParseServerAddr(addrstr)
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
@@ -176,7 +174,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 // 处理 http 过来的消息发送
 func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addrstr := r.URL.Query().Get("addr")
-	addr, err := wire.NewPeerAddr(addrstr)
+	addr, err := wire.ParsePeerAddr(addrstr)
 	if err != nil {
 		fmt.Fprint(w, err.Error())
 		w.WriteHeader(http.StatusBadRequest)

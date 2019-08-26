@@ -19,7 +19,7 @@ import (
 // 这个对象用于处理跨服务节点消息收发。
 type ServerPeer struct {
 	*peer.Peer
-	Addr       wire.Addr
+	// Addr       wire.Addr
 	URL        *url.URL // connect url
 	IsOut      bool     // be connected server
 	HostServer *Server  // host
@@ -51,7 +51,7 @@ func (p *ServerPeer) OnDisconnect() error {
 	errchan := make(chan error)
 	p.packet <- &Packet{from: p.Addr, use: useForDelServerPeer, content: p, err: errchan}
 	<-errchan
-	log.Printf("server %v disconnected", p.ID)
+	log.Printf("server %v disconnected", p.Addr.String())
 
 	// // 尝试重连
 	// for p.reconnectTimes < reconnectTimes {
@@ -107,14 +107,14 @@ func (p *ServerPeer) connect() error {
 func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 
 	serverPeer := &ServerPeer{
-		Addr:       server.Addr,
+		// Addr:       server.Addr,
 		HostServer: h.Server,
 		URL:        server.URL,
 		IsOut:      true,
 		packet:     h.packetQueue,
 	}
 
-	peer := peer.NewPeer(server.Addr.String(), "",
+	peer := peer.NewPeer(server.Addr, "",
 		&peer.Config{
 			Listeners: &peer.MessageListeners{
 				OnMessage:    serverPeer.OnMessage,
@@ -135,14 +135,14 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 // bindServerPeer 处理其它服务器节点过来的连接
 func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr string) (*ServerPeer, error) {
 	serverPeer := &ServerPeer{
-		Addr:       server.Addr,
+		// Addr:       server.Addr,
 		HostServer: h.Server,
 		URL:        server.URL,
 		IsOut:      false,
 		packet:     h.packetQueue,
 	}
 
-	peer := peer.NewPeer(server.Addr.String(), remoteAddr,
+	peer := peer.NewPeer(server.Addr, remoteAddr,
 		&peer.Config{
 			Listeners: &peer.MessageListeners{
 				OnMessage:    serverPeer.OnMessage,

@@ -100,7 +100,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
-	serverAddr, _ := wire.NewAddr(wire.AddrServer, uint32(cfg.Server.Domain), wire.DeviceNone, cfg.Server.ID)
+	serverAddr, _ := wire.NewServerAddr(uint32(cfg.Server.Domain), cfg.Server.ID)
 	hub := &Hub{
 		upgrader:        upgrader,
 		config:          cfg,
@@ -345,7 +345,7 @@ func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, e
 		for ele := range alivePeer.Groups.Iter() {
 			gAddr := ele.(wire.Addr)
 			if group, has := h.groups[gAddr]; has {
-				group.Remove(peer.Addr)
+				group.Remove(peer)
 			}
 		}
 
@@ -408,10 +408,10 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, errchan c
 
 		if dest.Type() == wire.AddrGroup {
 			// 消息异步发送到群中所有用户
-			go h.sendToGroup(dest, message)
+			h.sendToGroup(dest, message)
 		} else if dest.Type() == wire.AddrBroadcast {
 			// 消息异步发送到群中所有用户
-			go h.sendToDomain(dest, message)
+			h.sendToDomain(dest, message)
 		}
 		errchan <- nil
 	}
@@ -420,23 +420,39 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, errchan c
 func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, errchan chan error, resp chan *wire.Message) {
 	header := message.Header
 	body := message.Body
+
+	// if header.Source.Type() == wire.AddrPeer {
+	// 	if _, has := h.clientPeers[header.Source]; !has {
+	// 		resp := wire.MakeEmptyRespMessage(header, wire.MsgStatusSourceNoFound)
+	// 		h.responseMessage(from, resp)
+	// 		return
+	// 	}
+	// }
+
 	// 处理消息逻辑
 	switch header.Command {
 	case wire.MsgTypeGroupInOut:
 		msgGroup := body.(*wire.MsgGroupInOut)
+		peer := h.clientPeers[header.Source]
+
 		for _, group := range msgGroup.Groups {
-			if _, ok := h.groups[group]; !ok {
-				h.groups[group] = mapset.NewSet()
-			}
-			peer := h.clientPeers[message.Header.Source]
+
 			switch msgGroup.InOut {
 			case wire.GroupIn:
-				h.groups[group].Add(header.Source) // not pointer
-				peer.Groups.Add(group)             //record to peer
+				peer.Groups.Add(group) //record to peer
+				if _, ok := h.groups[group]; !ok {
+					h.groups[group] = mapset.NewSet() // initial group
+				}
+
+				h.groups[group].Add(peer) // not pointer
 			case wire.GroupOut:
-				h.groups[group].Remove(header.Source)
-				delete(h.groups, group)
 				peer.Groups.Remove(group)
+				h.groups[group].Remove(peer)
+				if h.groups[group].Cardinality() == 0 { // clean group
+					if len(h.groups) > 1000 {
+						delete(h.groups, group)
+					}
+				}
 			}
 		}
 	case wire.MsgTypeLoc: //收到定位消息
@@ -466,25 +482,32 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, errchan c
 	}
 }
 
+func (h *Hub) responseMessage(from wire.Addr, message *wire.Message) {
+	if from.Type() == wire.AddrPeer {
+		h.clientPeers[from].PushMessage(message, nil)
+	} else if from.Type() == wire.AddrServer {
+		h.serverPeers[from].PushMessage(message, nil)
+	}
+}
+
 var errMessageReceiverOffline = errors.New("Message Receiver is offline")
 
 func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
 	// 读取群用户列表。转发
-	addrs := h.groups[group]
-
-	if addrs.Cardinality() == 0 {
+	peers, has := h.groups[group]
+	if !has {
 		return
 	}
-	if addrs.Cardinality() < 30 {
-		log.Println("group message to clients:", addrs.ToSlice())
+
+	if peers.Cardinality() == 0 {
+		return
 	}
 
-	for elem := range addrs.Iterator().C {
-		addr := elem.(wire.Addr)
-		if cpeer, ok := h.clientPeers[addr]; ok {
-			cpeer.PushMessage(message, nil)
-		}
+	for elem := range peers.Iterator().C {
+		peer := elem.(*ClientPeer)
+		peer.PushMessage(message, nil)
 	}
+
 }
 
 func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
@@ -549,7 +572,6 @@ func (h *Hub) Close() {
 
 // clean clean hub
 func (h *Hub) clean() {
-
 	for _, speer := range h.serverPeers {
 		speer.Close()
 	}

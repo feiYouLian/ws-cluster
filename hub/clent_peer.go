@@ -13,7 +13,6 @@ import (
 // ClientPeer 代表一个客户端节点，消息收发的处理逻辑
 type ClientPeer struct {
 	*peer.Peer
-	Addr    wire.Addr
 	LoginAt time.Time  //second
 	Server  *Server    // the server you logined in
 	Groups  mapset.Set //all your groups
@@ -59,19 +58,18 @@ func (p *ClientPeer) OnDisconnect() error {
 	errchan := make(chan error)
 	p.packet <- &Packet{from: p.Addr, use: useForDelClientPeer, content: p, err: errchan}
 	<-errchan
-	log.Printf("client %v disconnected", p.ID)
+	log.Printf("client %v@%v disconnected", p.Addr.String(), p.RemoteAddr)
 	return nil
 }
 
 func newClientPeer(addr wire.Addr, remoteAddr string, h *Hub, conn *websocket.Conn) (*ClientPeer, error) {
 	clientPeer := &ClientPeer{
 		packet:     h.packetQueue,
-		Addr:       addr,
 		Server:     h.Server,
 		Groups:     mapset.NewThreadUnsafeSet(),
 		FriServers: mapset.NewThreadUnsafeSet(),
 	}
-	peer := peer.NewPeer(addr.String(), remoteAddr, &peer.Config{
+	peer := peer.NewPeer(addr, remoteAddr, &peer.Config{
 		Listeners: &peer.MessageListeners{
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,

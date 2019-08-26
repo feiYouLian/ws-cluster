@@ -80,8 +80,18 @@ func NewAddr(Typ byte, domain uint32, device byte, address string) (*Addr, error
 	return addr, nil
 }
 
-// NewPeerAddr new a peer address
-func NewPeerAddr(addr string) (*Addr, error) {
+// NewGroupAddr new a group address
+func NewGroupAddr(domain uint32, address string) (*Addr, error) {
+	return NewAddr(AddrGroup, domain, DeviceNone, address)
+}
+
+// NewServerAddr new a server address
+func NewServerAddr(domain uint32, address string) (*Addr, error) {
+	return NewAddr(AddrServer, domain, DeviceNone, address)
+}
+
+// ParsePeerAddr new a peer address
+func ParsePeerAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 5)
 	if len(addrs) != 5 {
 		return nil, ErrInvaildAddress
@@ -91,8 +101,8 @@ func NewPeerAddr(addr string) (*Addr, error) {
 	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[4])
 }
 
-// NewGroupAddr new a group address
-func NewGroupAddr(addr string) (*Addr, error) {
+// ParseGroupAddr new a group address
+func ParseGroupAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 5)
 	if len(addrs) != 5 {
 		return nil, ErrInvaildAddress
@@ -102,8 +112,8 @@ func NewGroupAddr(addr string) (*Addr, error) {
 	return NewAddr(AddrGroup, uint32(domain), byte(device), addrs[4])
 }
 
-// NewServerAddr new a server address
-func NewServerAddr(addr string) (*Addr, error) {
+// ParseServerAddr new a server address
+func ParseServerAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 5)
 	if len(addrs) != 5 {
 		return nil, ErrInvaildAddress

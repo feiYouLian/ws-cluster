@@ -18,7 +18,7 @@ const (
 	defaultWriteWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	defaultPongWait = 20 * time.Second
+	defaultPongWait = 30 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	defaultPingPeriod = 10 * time.Second
@@ -60,7 +60,7 @@ type outMessage struct {
 
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
-	ID            string
+	Addr          wire.Addr
 	RemoteAddr    string // ip:port
 	config        *Config
 	conn          *websocket.Conn
@@ -76,7 +76,7 @@ type Peer struct {
 }
 
 // NewPeer 创建一个新的节点
-func NewPeer(ID string, RemoteAddr string, config *Config) *Peer {
+func NewPeer(addr wire.Addr, RemoteAddr string, config *Config) *Peer {
 	if config.WriteWait == 0 {
 		config.WriteWait = defaultWriteWait
 	}
@@ -94,7 +94,7 @@ func NewPeer(ID string, RemoteAddr string, config *Config) *Peer {
 		config.PingPeriod = (config.PongWait * 9) / 10
 	}
 	return &Peer{
-		ID:         ID,
+		Addr:       addr,
 		RemoteAddr: RemoteAddr,
 		config:     config,
 		outQueue:   make(chan outMessage, 1),
@@ -127,6 +127,7 @@ func (p *Peer) start() {
 
 func (p *Peer) inMessageHandler() {
 	defer func() {
+		log.Println(p.Addr.String(), "peer exit")
 		p.Close()
 		p.config.Listeners.OnDisconnect()
 	}()
@@ -139,27 +140,39 @@ func (p *Peer) inMessageHandler() {
 	for {
 		messageType, message, err := p.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Println("error:", err)
-			}
+			log.Println(p.Addr.String(), "read message error:", err)
 			break
 		}
 		if messageType == websocket.CloseMessage {
-			log.Println("closed:", p.ID)
+			log.Println("closed:", p.Addr.String())
 			break
 		}
-
+		if messageType == websocket.PingMessage {
+			log.Println("pong ...")
+			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println("pong error", err)
+				break
+			}
+			continue
+		}
+		if len(message) == 0 {
+			continue
+		}
 		// 从消息中取出多条单个消息一一处理
 		buf := bytes.NewReader(message)
 		for {
-			message := new(wire.Message)
-			err := message.Decode(buf)
-			if err != nil {
+			msg := new(wire.Message)
+			err := msg.Decode(buf)
+			if err != nil { // read EOF
 				break
 			}
-			err = p.config.Listeners.OnMessage(message)
+			if p.Addr.Type() == wire.AddrPeer {
+				msg.Header.Source = p.Addr // set source
+			}
+
+			err = p.config.Listeners.OnMessage(msg)
 			if err != nil {
-				log.Println("peer.go line:162 ", p.ID, err)
+				log.Println("peer.go line:162 ", p.Addr.String(), err)
 			}
 
 		}
@@ -247,11 +260,11 @@ Loop:
 			w, err := p.conn.NextWriter(websocket.BinaryMessage)
 			if err != nil {
 				outMessage.done <- err
+				log.Println(p.Addr.String(), err)
 				return
 			}
 
 			err = outMessage.message.Encode(w)
-
 			if err != nil {
 				outMessage.done <- err
 				continue
@@ -267,6 +280,7 @@ Loop:
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println("ping error", err)
 				break Loop
 			}
 		case <-p.queueQuit:

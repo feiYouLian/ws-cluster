@@ -25,6 +25,8 @@ const (
 	MsgTypeQueryClient = uint8(13)
 	// MsgTypeQueryClientResp MsgTypeQueryClientResp
 	MsgTypeQueryClientResp = uint8(14)
+	// MsgTypeEmpty MsgTypeEmpty
+	MsgTypeEmpty = uint8(200)
 )
 
 // const (
@@ -49,6 +51,7 @@ type Header struct {
 	Seq     uint32 //消息序列号，peer唯一
 	AckSeq  uint32 //应答消息序列号
 	Command uint8  //命令类型
+	Status  uint8  // respose status
 }
 
 // Decode Decode reader to Header
@@ -67,6 +70,9 @@ func (h *Header) Decode(r io.Reader) error {
 		return err
 	}
 	if h.Command, err = ReadUint8(r); err != nil {
+		return err
+	}
+	if h.Status, err = ReadUint8(r); err != nil {
 		return err
 	}
 	return nil
@@ -88,6 +94,9 @@ func (h *Header) Encode(w io.Writer) error {
 		return err
 	}
 	if err = WriteUint8(w, h.Command); err != nil {
+		return err
+	}
+	if err = WriteUint8(w, h.Status); err != nil {
 		return err
 	}
 	return nil
@@ -153,6 +162,8 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgQueryClient{}
 	case MsgTypeQueryClientResp:
 		body = &MsgQueryClientResp{}
+	case MsgTypeEmpty:
+		body = &MsgEmpty{}
 	default:
 		return nil, fmt.Errorf("unhandled msgType[%d]", Command)
 	}
@@ -166,5 +177,19 @@ func MakeEmptyHeaderMessage(Command uint8, body Protocol) *Message {
 			Command: Command,
 		},
 		Body: body,
+	}
+}
+
+// MakeEmptyRespMessage Make a Message which body is MsgEmpty
+func MakeEmptyRespMessage(from *Header, status uint8) *Message {
+	header := &Header{
+		Source:  from.Dest,
+		Dest:    from.Source,
+		AckSeq:  from.Seq,
+		Command: MsgTypeEmpty,
+	}
+	return &Message{
+		Header: header,
+		Body:   &MsgEmpty{},
 	}
 }

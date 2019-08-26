@@ -5,12 +5,12 @@ import (
 )
 
 const (
-	// AckSucc server success done it
-	AckSucc = uint8(1)
-	// AckFail server fail done it
-	AckFail = uint8(2)
+	// AckSent sent to client
+	AckSent = uint8(1)
 	// AckRead dest peer has read it
-	AckRead = uint8(3)
+	AckRead = uint8(2)
+	// AckFail server fail done it
+	AckFail = uint8(9)
 )
 
 // MsgChatResp 单聊消息应答
