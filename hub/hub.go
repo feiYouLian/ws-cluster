@@ -461,7 +461,7 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 			case wire.GroupIn:
 				peer.Groups.Add(group) //record to peer
 				if _, ok := h.groups[group]; !ok {
-					h.groups[group] = mapset.NewSet() // initial group
+					h.groups[group] = mapset.NewThreadUnsafeSet() // initial group
 				}
 
 				h.groups[group].Add(peer) // not pointer
@@ -520,10 +520,10 @@ func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
 		return
 	}
 
-	for elem := range peers.Iterator().C {
-		peer := elem.(*ClientPeer)
-		peer.PushMessage(message, nil)
-	}
+	peers.Each(func(elem interface{}) bool {
+		elem.(*ClientPeer).PushMessage(message, nil)
+		return false
+	})
 
 }
 
@@ -589,6 +589,7 @@ func (h *Hub) Close() {
 
 // clean clean hub
 func (h *Hub) clean() {
+
 	for _, speer := range h.serverPeers {
 		speer.Close()
 	}
