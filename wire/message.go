@@ -12,7 +12,6 @@ const (
 	MsgTypeChat = uint8(3)
 	// MsgTypeChatResp 应答消息
 	MsgTypeChatResp = uint8(4)
-
 	// MsgTypeGroupInOut join or leave group
 	MsgTypeGroupInOut = uint8(5)
 	// MsgTypeKill kill a client
@@ -21,10 +20,9 @@ const (
 	MsgTypeLoc = uint8(9)
 	// MsgTypeOffline offline notice message
 	MsgTypeOffline = uint8(11)
-	// MsgTypeQueryClient MsgTypeQueryClient
-	MsgTypeQueryClient = uint8(13)
-	// MsgTypeQueryClientResp MsgTypeQueryClientResp
-	MsgTypeQueryClientResp = uint8(14)
+	// MsgTypeOfflineNotice MsgTypeOfflineNotice
+	MsgTypeOfflineNotice = uint8(13)
+
 	// MsgTypeEmpty MsgTypeEmpty
 	MsgTypeEmpty = uint8(200)
 )
@@ -158,10 +156,8 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgLoc{}
 	case MsgTypeOffline:
 		body = &MsgOffline{}
-	case MsgTypeQueryClient:
-		body = &MsgQueryClient{}
-	case MsgTypeQueryClientResp:
-		body = &MsgQueryClientResp{}
+	case MsgTypeOfflineNotice:
+		body = &MsgOfflineNotice{}
 	case MsgTypeEmpty:
 		body = &MsgEmpty{}
 	default:

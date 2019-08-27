@@ -285,6 +285,7 @@ func (h *Hub) packetHandler() {
 			case useForRelayMessage:
 				message := packet.content.(*wire.Message)
 				header := message.Header
+				h.recordSession(packet.from, header)
 				if packet.from.Type() == wire.AddrServer && header.Source.Type() == wire.AddrPeer { //如果是转发过来的消息，就记录发送者的定位
 					h.recordLocation(packet.from, message)
 				}
@@ -300,6 +301,18 @@ func (h *Hub) packetHandler() {
 	}
 }
 
+func (h *Hub) recordSession(from wire.Addr, header *wire.Header) {
+	if header.Source.Type() == wire.AddrPeer {
+		if peer, has := h.clientPeers[header.Dest]; has {
+			if from.Type() == wire.AddrPeer { // source and dest peer are in same server
+				peer.AddSession(header.Source, h.Server.Addr)
+			} else {
+				peer.AddSession(header.Source, from)
+			}
+		}
+	}
+}
+
 // record visiting client peer location if this message is relaid by a server peer
 func (h *Hub) recordLocation(from wire.Addr, message *wire.Message) {
 	header := message.Header
@@ -310,13 +323,14 @@ func (h *Hub) recordLocation(from wire.Addr, message *wire.Message) {
 	h.location[header.Source] = from
 	// A locating message is sent to the source server if dest is in this server, let it know the dest client is in this server.
 	// so the server can directly send the same dest message to this server on next time
-	if peer, has := h.clientPeers[dest]; has {
-		peer.FriServers.Add(from) //recored to peer
-
+	if _, has := h.clientPeers[dest]; has {
 		loc := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoc, &wire.MsgLoc{
-			Peer: dest,
-			In:   h.Server.Addr,
+			Target: header.Source,
+			Peer:   dest,
+			In:     h.Server.Addr,
 		})
+		loc.Header.Dest = from
+		loc.Header.Source = h.Server.Addr
 		speer := h.serverPeers[from]
 		speer.PushMessage(loc, nil)
 	}
@@ -351,23 +365,56 @@ func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, r
 		delete(h.clientPeers, peer.Addr)
 
 		// leave groups
-		for ele := range alivePeer.Groups.Iter() {
-			gAddr := ele.(wire.Addr)
+		alivePeer.Groups.Each(func(elem interface{}) bool {
+			gAddr := elem.(wire.Addr)
 			if group, has := h.groups[gAddr]; has {
 				group.Remove(peer)
 			}
-		}
+			return false
+		})
 
 		// notice other server your are offline
-		for ele := range alivePeer.FriServers.Iter() {
-			sAddr := ele.(wire.Addr)
-			if speer, has := h.serverPeers[sAddr]; has {
-				offline := wire.MakeEmptyHeaderMessage(wire.MsgTypeOffline, &wire.MsgOffline{
-					Peer: peer.Addr,
-				})
+		for server, peers := range peer.getAllSessionServers() {
+			offline := wire.MakeEmptyHeaderMessage(wire.MsgTypeOffline, &wire.MsgOffline{
+				Peer:    peer.Addr,
+				Targets: peers,
+				Notice:  peer.OfflineNotice,
+			})
+			offline.Header.Source = h.Server.Addr
+
+			if speer, has := h.serverPeers[server]; has {
+				offline.Header.Dest = server
 				speer.PushMessage(offline, nil)
+			} else {
+				offline.Header.Dest = h.Server.Addr // send to logic handler
+				// the session is in local server
+				h.packetQueue <- &Packet{
+					from:    h.Server.Addr,
+					use:     useForRelayMessage,
+					content: offline,
+				}
 			}
 		}
+
+		// if peer.OfflineNotice { //notice all clients that you are offline
+		// 	peer.Sessions.Each(func(elem interface{}) bool {
+		// 		session := elem.(*Session)
+		// 		offline := wire.MakeEmptyHeaderMessage(wire.MsgTypeOffline, &wire.MsgOffline{
+		// 			Peer:    peer.Addr,
+		// 			Targets: []wire.Addr{},
+		// 		})
+		// 		offline.Header.Source = h.Server.Addr
+		// 		offline.Header.Dest = session.PeerAddr
+
+		// 		if cpeer, has := h.clientPeers[session.ServerAddr]; has {
+		// 			cpeer.PushMessage(offline, nil)
+		// 		} else if speer, has := h.serverPeers[session.ServerAddr]; has {
+		// 			speer.PushMessage(offline, nil)
+		// 		}
+		// 		return false
+		// 	})
+		// }
+
 	}
 	resp <- &Resp{Status: wire.MsgStatusOk}
 	return
@@ -479,22 +526,25 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 		msgLoc := body.(*wire.MsgLoc)
 		h.location[msgLoc.Peer] = msgLoc.In
 		//  regist a server to peer whether it is successful
-		peer := h.clientPeers[message.Header.Source]
-		peer.FriServers.Add(from)
+		peer := h.clientPeers[msgLoc.Target]
+		peer.AddSession(msgLoc.Peer, msgLoc.In)
 	case wire.MsgTypeOffline: //handle offline message
 		msgOffline := body.(*wire.MsgOffline)
 		delete(h.location, msgOffline.Peer)
 
-		peer := h.clientPeers[message.Header.Source]
-		peer.FriServers.Remove(from)
-	case wire.MsgTypeQueryClient: // unfinish
-		query := body.(*wire.MsgQueryClient)
-		var msgResp = new(wire.MsgQueryClientResp)
-		if peer, has := h.clientPeers[query.Peer]; has {
-			msgResp.LoginAt = uint32(peer.LoginAt.Unix())
-			response.Body = msgResp
-		} else {
-			// relay to other server peer for quering
+		for _, target := range msgOffline.Targets {
+			peer, has := h.clientPeers[target]
+			if !has {
+				continue
+			}
+			peer.DelSession(msgOffline.Peer)
+			if msgOffline.Notice == 1 { //notice to client
+				offlineNotice := wire.MakeEmptyHeaderMessage(wire.MsgTypeOfflineNotice, &wire.MsgOfflineNotice{
+					Peer: msgOffline.Peer,
+				})
+				offlineNotice.Header.Dest = target
+				peer.PushMessage(offlineNotice, nil)
+			}
 		}
 	}
 }

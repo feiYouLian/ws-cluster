@@ -121,7 +121,9 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 				OnMessage:    serverPeer.OnMessage,
 				OnDisconnect: serverPeer.OnDisconnect,
 			},
-			MaxMessageSize: h.config.Peer.MaxMessageSize,
+			PingPeriod:     time.Second * 20,
+			PongWait:       time.Second * 30,
+			MaxMessageSize: 1024 * 10, //1M
 		})
 
 	serverPeer.Peer = peer
@@ -150,8 +152,8 @@ func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr str
 				OnDisconnect: serverPeer.OnDisconnect,
 			},
 			PingPeriod:     time.Second * 20,
-			PongWait:       time.Second * 60,
-			MaxMessageSize: h.config.Peer.MaxMessageSize,
+			PongWait:       time.Second * 30,
+			MaxMessageSize: 1024 * 10, //1M
 		})
 
 	serverPeer.Peer = peer

@@ -18,7 +18,7 @@ const (
 	defaultWriteWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	defaultPongWait = 30 * time.Second
+	defaultPongWait = 20 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	defaultPingPeriod = 10 * time.Second
@@ -151,9 +151,13 @@ func (p *Peer) inMessageHandler() {
 		if err != nil {
 			// if websocket.IsCloseError(err,websocket.E) {
 			// }
-			// if websocket.IsUnexpectedCloseError(err, websocket.CloseMessageTooBig) {
-			// }
 			log.Println(p.Addr.String(), err)
+
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseMessageTooBig) &&
+				p.Addr.Type() == wire.AddrServer {
+				continue
+			}
+
 			break
 		}
 		if messageType == websocket.CloseMessage {

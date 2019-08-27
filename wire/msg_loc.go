@@ -4,13 +4,17 @@ import "io"
 
 // MsgLoc location message
 type MsgLoc struct {
-	Peer Addr // target Peer address
-	In   Addr //Peer in server
+	Target Addr // the peer be noticed
+	Peer   Addr // this Peer
+	In     Addr //Peer in server
 }
 
 // Decode Decode
 func (m *MsgLoc) Decode(r io.Reader) error {
 	var err error
+	if m.Target.Decode(r); err != nil {
+		return err
+	}
 	if m.Peer.Decode(r); err != nil {
 		return err
 	}
@@ -23,6 +27,9 @@ func (m *MsgLoc) Decode(r io.Reader) error {
 // Encode Encode
 func (m *MsgLoc) Encode(w io.Writer) error {
 	var err error
+	if m.Target.Encode(w); err != nil {
+		return err
+	}
 	if m.Peer.Encode(w); err != nil {
 		return err
 	}

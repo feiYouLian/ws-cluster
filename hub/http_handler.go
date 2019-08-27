@@ -32,10 +32,6 @@ func httplisten(hub *Hub, conf *config.ServerConfig) {
 		httpSendMsgHandler(hub, w, r)
 	})
 
-	http.HandleFunc("/q/online", func(w http.ResponseWriter, r *http.Request) {
-		httpQueryClientOnlineHandler(hub, w, r)
-	})
-
 	log.Println("listen on ", fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort))
 	err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort), nil)
 
@@ -51,6 +47,10 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addr := q.Get("addr") //  /p/domain/1/id
 	nonce := q.Get("nonce")
 	digest := q.Get("digest")
+	offlineNotice := uint8(0)
+	if q.Get("off") == "1" {
+		offlineNotice = uint8(1)
+	}
 
 	if addr == "" || nonce == "" || digest == "" {
 		// 错误处理，断开
@@ -75,7 +75,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientPeer, err := newClientPeer(*peerAddr, r.RemoteAddr, hub, conn)
+	clientPeer, err := newClientPeer(*peerAddr, r.RemoteAddr, offlineNotice, hub, conn)
 
 	if err != nil {
 		handleHTTPErr(w, err)
@@ -169,27 +169,6 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	msg.Header.Dest = *dest
 	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg}
 	fmt.Fprint(w, "ok")
-}
-
-// 处理 http 过来的消息发送
-func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	addrstr := r.URL.Query().Get("addr")
-	addr, err := wire.ParsePeerAddr(addrstr)
-	if err != nil {
-		fmt.Fprint(w, err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-	}
-	respchan := make(chan *Resp)
-
-	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryClient, &wire.MsgQueryClient{
-		Peer: *addr,
-	})
-	msg.Header.Dest = hub.Server.Addr
-	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
-
-	resp := <-respchan
-	query := resp.Body.(*wire.MsgQueryClientResp)
-	fmt.Fprint(w, query.LoginAt)
 }
 
 func checkDigest(secret, text, digest string) bool {

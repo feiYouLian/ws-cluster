@@ -191,6 +191,15 @@ func ReadUint32(r io.Reader) (uint32, error) {
 	return littleEndian.Uint32(bytes), nil
 }
 
+// ReadUint16 从 reader 中读取一个 uint16
+func ReadUint16(r io.Reader) (uint16, error) {
+	var bytes = make([]byte, 2)
+	if _, err := io.ReadFull(r, bytes); err != nil {
+		return 0, err
+	}
+	return littleEndian.Uint16(bytes), nil
+}
+
 // ReadUint64 从 reader 中读取一个 uint64
 func ReadUint64(r io.Reader) (uint64, error) {
 	var bytes = make([]byte, 8)
@@ -226,6 +235,16 @@ func ReadBytes(r io.Reader) ([]byte, error) {
 // WriteUint8 写一个 uint8到 writer 中
 func WriteUint8(w io.Writer, val uint8) error {
 	buf := []byte{byte(val)}
+	if _, err := w.Write(buf); err != nil {
+		return err
+	}
+	return nil
+}
+
+// WriteUint16 写一个 int16到 writer 中
+func WriteUint16(w io.Writer, val uint16) error {
+	buf := make([]byte, 2)
+	littleEndian.PutUint16(buf, val)
 	if _, err := w.Write(buf); err != nil {
 		return err
 	}
