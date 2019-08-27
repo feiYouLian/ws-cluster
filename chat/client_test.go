@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ws-cluster/peer"
 	"github.com/ws-cluster/wire"
 )
 
 func Test_sendtoclient(t *testing.T) {
 	msgchan := make(chan *wire.Message, 100)
-	connetchan := make(chan *ClientPeer, 100)
-	disconnetchan := make(chan *ClientPeer)
+	connetchan := make(chan *peer.Peer, 100)
+	disconnetchan := make(chan *peer.Peer)
 	quit := make(chan bool)
 	ackNum := 0
 	totalNum := 0
@@ -60,13 +61,13 @@ func Test_sendtoclient(t *testing.T) {
 	t1 := time.Now()
 	for index := 0; index < sendNum; index++ {
 		addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index%peerNum))
-		sendtoclient(syspeer, *addr)
+		sendtoclient(syspeer.Peer, *addr)
 		// time.Sleep(time.Second)
 	}
 
 	testgroup, _ := wire.NewGroupAddr(1, "test")
 	for index := 0; index < sendGroupMsgNum; index++ {
-		sendtoclient(syspeer, *testgroup)
+		sendtoclient(syspeer.Peer, *testgroup)
 		// time.Sleep(time.Second)
 	}
 	t2 := time.Now()

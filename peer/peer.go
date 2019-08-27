@@ -27,8 +27,8 @@ const (
 	defaultMaxMessageSize = 512
 )
 
-// ErrPeerHasClosed peer has closed, pushmessage failed
-var ErrPeerHasClosed = errors.New("peer has closed")
+// ErrPeerNotOpen peer has closed, pushmessage failed
+var ErrPeerNotOpen = errors.New("peer not open")
 
 // MessageListeners 消息监听
 type MessageListeners struct {
@@ -53,25 +53,35 @@ type Config struct {
 	Listeners *MessageListeners
 }
 
-type outMessage struct {
-	message *wire.Message
+const (
+	packetUseForMessage = uint8(1)
+	packetUseForClose   = uint8(9)
+)
+
+type packet struct {
+	use     uint8 // 9 exit  1 message out
+	content interface{}
 	done    chan<- error
 }
 
+// type quitMessage struct {
+// 	done chan struct{}
+// }
+
 // Peer 节点封装了 websocket 通信底层接口
 type Peer struct {
-	Addr          wire.Addr
-	RemoteAddr    string // ip:port
-	config        *Config
-	conn          *websocket.Conn
-	outQueue      chan outMessage
-	sendQueue     chan outMessage
-	sendDone      chan struct{}
-	quit          chan struct{}
-	queueQuit     chan struct{}
+	Addr       wire.Addr
+	RemoteAddr string // ip:port
+	config     *Config
+	conn       *websocket.Conn
+	outQueue   chan packet
+	sendQueue  chan packet
+	sendDone   chan struct{}
+	// quit          chan quitMessage
+	connclosed    chan struct{}
 	timeConnected time.Time
 
-	connected int32
+	connected int32 // 0 unconnected 1 connected 2 closing
 	autoSeq   uint32
 }
 
@@ -97,11 +107,11 @@ func NewPeer(addr wire.Addr, RemoteAddr string, config *Config) *Peer {
 		Addr:       addr,
 		RemoteAddr: RemoteAddr,
 		config:     config,
-		outQueue:   make(chan outMessage, 1),
-		sendQueue:  make(chan outMessage, 1),
+		outQueue:   make(chan packet, 1),
+		sendQueue:  make(chan packet, 1),
 		sendDone:   make(chan struct{}, 1),
-		quit:       make(chan struct{}),
-		queueQuit:  make(chan struct{}),
+		// quit:       make(chan quitMessage, 1),
+		connclosed: make(chan struct{}, 1),
 	}
 }
 
@@ -120,16 +130,14 @@ func (p *Peer) SetConnection(conn *websocket.Conn) {
 
 func (p *Peer) start() {
 	go p.inMessageHandler()
-	go p.outQueueHandler()
-	go p.outMessageHandler()
+	go p.packetQueueHandler()
+	go p.packetHandler()
 	// log.Printf("peer %v started", p.ID)
 }
 
 func (p *Peer) inMessageHandler() {
 	defer func() {
-		log.Println(p.Addr.String(), "peer exit")
-		p.Close()
-		p.config.Listeners.OnDisconnect()
+		p.connectionClosed()
 	}()
 	p.conn.SetReadLimit(int64(p.config.MaxMessageSize))
 	p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
@@ -137,23 +145,20 @@ func (p *Peer) inMessageHandler() {
 		p.conn.SetReadDeadline(time.Now().Add(p.config.PongWait))
 		return nil
 	})
+
 	for {
 		messageType, message, err := p.conn.ReadMessage()
 		if err != nil {
-			log.Println(p.Addr.String(), "read message error:", err)
+			// if websocket.IsCloseError(err,websocket.E) {
+			// }
+			// if websocket.IsUnexpectedCloseError(err, websocket.CloseMessageTooBig) {
+			// }
+			log.Println(p.Addr.String(), err)
 			break
 		}
 		if messageType == websocket.CloseMessage {
 			log.Println("closed:", p.Addr.String())
 			break
-		}
-		if messageType == websocket.PingMessage {
-			log.Println("pong ...")
-			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Println("pong error", err)
-				break
-			}
-			continue
 		}
 		if len(message) == 0 {
 			continue
@@ -163,7 +168,7 @@ func (p *Peer) inMessageHandler() {
 		for {
 			msg := new(wire.Message)
 			err := msg.Decode(buf)
-			if err != nil { // read EOF
+			if err != nil { // read EOF,no more message
 				break
 			}
 			if p.Addr.Type() == wire.AddrPeer {
@@ -176,34 +181,72 @@ func (p *Peer) inMessageHandler() {
 			}
 
 		}
-		// mlen := len(message)
-		// for i := 0; i < mlen; {
-		// 	msg, err := wire.ReadBytes(buf)
-		// 	if err != nil {
-		// 		log.Println(err)
-		// 		// no more message
-		// 		break
-		// 	}
-		// 	i = i + 4 + len(msg)
-		// 	go func(message []byte) {
-		// 		err = p.config.Listeners.OnMessage(msg)
-		// 		if err != nil {
-		// 			log.Println(err)
-		// 		}
-		// 	}(msg)
-		// }
 	}
 }
 
+func (p *Peer) packetHandler() {
+	ticker := time.NewTicker(p.config.PingPeriod)
+	defer func() {
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case packet := <-p.sendQueue:
+			var err error
+			if packet.use == packetUseForMessage {
+				err = p.writeMessage(packet.content.(*wire.Message))
+			} else if packet.use == packetUseForClose { // close connection
+				p.closeConnect() //actively close the connection
+				return
+			}
+
+			packet.done <- err
+			p.sendDone <- struct{}{}
+		case <-ticker.C:
+			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
+			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				p.connectionClosed()
+				return
+			}
+		}
+	}
+}
+
+func (p *Peer) writeMessage(message *wire.Message) error {
+	header := message.Header
+	if header.Seq == 0 { // message sender set a Seq
+		p.autoSeq++
+		header.Seq = p.autoSeq
+	}
+
+	p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
+
+	w, err := p.conn.NextWriter(websocket.BinaryMessage)
+	if err != nil {
+		return err
+	}
+
+	err = message.Encode(w)
+	if err != nil {
+		return err
+	}
+
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // 消息队列处理
-func (p *Peer) outQueueHandler() {
+func (p *Peer) packetQueueHandler() {
 	pendingMsgs := list.New()
 
 	// We keep the waiting flag so that we know if we have a pending message
 	waiting := false
 
 	// To avoid duplication below.
-	queuePacket := func(msg outMessage, list *list.List, waiting bool) bool {
+	queuePacket := func(msg packet, list *list.List, waiting bool) bool {
 		if !waiting {
 			p.sendQueue <- msg
 		} else {
@@ -216,11 +259,6 @@ Loop:
 	for {
 		select {
 		case msg, _ := <-p.outQueue:
-			header := msg.message.Header
-			if header.Seq == 0 { // message sender set a Seq
-				p.autoSeq++
-				header.Seq = p.autoSeq
-			}
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 		case <-p.sendDone:
 			next := pendingMsgs.Front()
@@ -232,12 +270,11 @@ Loop:
 			// Notify the handleWirte about the next item to
 			// asynchronously send.
 			val := pendingMsgs.Remove(next)
-			p.sendQueue <- val.(outMessage)
-		case <-p.quit:
+			p.sendQueue <- val.(packet)
+		case <-p.connclosed: //connection has closed
 			break Loop
 		}
 	}
-	p.queueQuit <- struct{}{}
 
 	// clean
 	for next := pendingMsgs.Front(); next != nil; {
@@ -245,83 +282,58 @@ Loop:
 	}
 }
 
-func (p *Peer) outMessageHandler() {
-	ticker := time.NewTicker(p.config.PingPeriod)
-	defer func() {
-		p.disconnect()
-		ticker.Stop()
-	}()
-Loop:
-	for {
-		select {
-		case outMessage := <-p.sendQueue:
-			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
-
-			w, err := p.conn.NextWriter(websocket.BinaryMessage)
-			if err != nil {
-				outMessage.done <- err
-				log.Println(p.Addr.String(), err)
-				return
-			}
-
-			err = outMessage.message.Encode(w)
-			if err != nil {
-				outMessage.done <- err
-				continue
-			}
-
-			if err := w.Close(); err != nil {
-				outMessage.done <- err
-				continue
-			}
-
-			outMessage.done <- nil
-			p.sendDone <- struct{}{}
-		case <-ticker.C:
-			p.conn.SetWriteDeadline(time.Now().Add(p.config.WriteWait))
-			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Println("ping error", err)
-				break Loop
-			}
-		case <-p.queueQuit:
-			p.conn.WriteMessage(websocket.CloseMessage, nil)
-			time.Sleep(time.Millisecond * 10)
-			break Loop
-		}
-	}
-}
-
 // PushMessage 把消息写到队列中，等待处理。如果连接已经关系，消息会被丢掉
 func (p *Peer) PushMessage(message *wire.Message, doneChan chan error) {
 	if doneChan == nil { //throw err
-		doneChan = make(chan error)
+		doneChan = make(chan error, 1)
 		go func() {
 			<-doneChan
 		}()
 	}
 
 	if !p.IsConnected() {
-		doneChan <- ErrPeerHasClosed
+		doneChan <- ErrPeerNotOpen
 		return
 	}
 
-	p.outQueue <- outMessage{message: message, done: doneChan}
+	p.outQueue <- packet{use: packetUseForMessage, content: message, done: doneChan}
 }
 
-// Close close conn
+// Close Close peer conn
 func (p *Peer) Close() {
 	if !p.IsConnected() {
 		return
 	}
-	p.quit <- struct{}{}
+	if !atomic.CompareAndSwapInt32(&p.connected, 1, 2) { //closing
+		return
+	}
+	done := make(chan error, 1)
+	go func() {
+		<-done
+	}()
+	p.outQueue <- packet{use: packetUseForClose, content: nil, done: done}
 }
 
-//  断开连接
-func (p *Peer) disconnect() {
-	if !atomic.CompareAndSwapInt32(&p.connected, 1, 0) {
+//  actively close the connection
+func (p *Peer) closeConnect() {
+	if !atomic.CompareAndSwapInt32(&p.connected, 2, 0) {
 		return
 	}
 	p.conn.Close()
+	p.connclosed <- struct{}{}
+}
+
+// connection has been closed by other side
+func (p *Peer) connectionClosed() {
+	if !atomic.CompareAndSwapInt32(&p.connected, 1, 2) {
+		return
+	}
+	p.connclosed <- struct{}{}
+
+	err := p.config.Listeners.OnDisconnect()
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 // IsConnected 判断连接是否正常
