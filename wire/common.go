@@ -21,6 +21,8 @@ var (
 )
 
 const (
+	// AddrVirtual AddrVirtual
+	AddrVirtual = byte(0)
 	// AddrPeer peer address
 	AddrPeer = byte(1)
 	// AddrServer is server addr

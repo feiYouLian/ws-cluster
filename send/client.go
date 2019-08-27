@@ -37,10 +37,10 @@ func main() {
 		go func() {
 			msg := database.ChatMsg{
 				From:  "sys",
-				Scope: wire.ScopeGroup,
-				To:    "fb_score_notify",
+				Scope: wire.AddrGroup,
+				To:    "test",
 				Type:  1,
-				Text:  "{\"sportId\":1,\"goalTime\":35,\"league\":\"xxx\",\"homeTeam\":\"A\",\"visitingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}",
+				Text:  "hello",
 			}
 
 			d, _ := json.Marshal(msg)

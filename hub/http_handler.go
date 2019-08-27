@@ -163,7 +163,7 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Extra: body.Extra,
 	})
 
-	source, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, wire.DevicePhone, body.From)
+	source, _ := wire.NewAddr(wire.AddrVirtual, body.FromDomain, wire.DevicePhone, body.From)
 	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, wire.DevicePhone, body.To)
 	msg.Header.Source = *source
 	msg.Header.Dest = *dest
