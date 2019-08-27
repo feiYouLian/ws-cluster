@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ws-cluster/wire"
@@ -93,17 +94,17 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	}
 	p.message <- message
 
-	if message.Header.Command == wire.MsgTypeChat {
-		if message.Header.Dest.Type() == wire.AddrPeer { // peer to peer
-			ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
-				State: wire.AckSent,
-			})
-			ackmessage.Header.Source = p.addr
-			ackmessage.Header.Dest = message.Header.Source
-			ackmessage.Header.AckSeq = message.Header.Seq
-			p.PushMessage(ackmessage, nil)
-		}
-	}
+	// if message.Header.Command == wire.MsgTypeChat {
+	// 	if message.Header.Dest.Type() == wire.AddrPeer { // peer to peer
+	// 		ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
+	// 			State: wire.AckRead,
+	// 		})
+	// 		ackmessage.Header.Source = p.addr
+	// 		ackmessage.Header.Dest = message.Header.Source
+	// 		ackmessage.Header.AckSeq = message.Header.Seq
+	// 		p.PushMessage(ackmessage, nil)
+	// 	}
+	// }
 
 	return nil
 }
@@ -154,7 +155,7 @@ var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
 
 // var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
 var peerNum = 1
-var sendMsgNum = 10
+var sendMsgNum = 0
 
 func main() {
 	// listen sys.exit
@@ -175,6 +176,7 @@ func main() {
 	intervalMsgNum := 0
 	totalMsgNum := 0
 	totalPeerNum := 0
+	groupNum := 0
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -186,10 +188,15 @@ func main() {
 		for {
 			select {
 			case peer := <-connetchan:
+				totalPeerNum++
+				if totalPeerNum == peerNum {
+					t2 := time.Now()
+					log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
+				}
+
 				if peer == nil {
 					continue
 				}
-				totalPeerNum++
 
 				msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeGroupInOut, &wire.MsgGroupInOut{
 					InOut:  wire.GroupIn,
@@ -198,20 +205,17 @@ func main() {
 				msg.Header.Source = peer.Addr
 				peer.PushMessage(msg, nil)
 
-				if totalPeerNum == peerNum {
-					t2 := time.Now()
-					log.Printf("login client[%v], cost time: %v", peerNum, t2.Sub(t1))
-					for index := 0; index < sendMsgNum; index++ {
-						sendtoclient(peer, *testgroup)
-						// time.Sleep(time.Second)
-					}
-				}
 			case <-disconnetchan:
 				totalPeerNum--
 				if totalPeerNum == 0 {
 					quit <- true
 				}
-			case <-msgchan:
+			case message := <-msgchan:
+				if message.Header.AckSeq > 0 { // join group ack
+					groupNum++
+
+					continue
+				}
 				intervalMsgNum++
 				totalMsgNum++
 			case <-ticker.C:
@@ -223,28 +227,28 @@ func main() {
 		}
 	}()
 
-	// ws := sync.WaitGroup{}
+	ws := sync.WaitGroup{}
 
 	for index := 0; index < peerNum; index++ {
-		// ws.Add(1)
-		// go func(i int) {
-		// 	wshost := wshosts[i%2]
-		// 	addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
-		// 	_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
-		// 	if err != nil {
-		// 		log.Println(err)
-		// 	}
-		// 	ws.Done()
-		// }(index)
+		ws.Add(1)
+		go func(i int) {
+			wshost := wshosts[i%2]
+			addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
+			_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
+			if err != nil {
+				log.Println(err)
+			}
+			ws.Done()
+		}(index)
 
-		wshost := wshosts[index%2]
-		addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
-		_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
-		if err != nil {
-			log.Println(err)
-		}
+		// wshost := wshosts[index%2]
+		// addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
+		// _, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
+		// if err != nil {
+		// 	log.Println(err)
+		// }
 	}
-	// ws.Wait()
+	ws.Wait()
 	log.Println("new peer finish")
 	<-quit
 

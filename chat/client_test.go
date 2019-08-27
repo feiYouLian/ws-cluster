@@ -31,6 +31,8 @@ func Test_sendtoclient(t *testing.T) {
 	go func() {
 		for {
 			select {
+			case <-disconnetchan:
+				quit <- true
 			case <-connetchan:
 				log.Println("login success")
 			case message := <-msgchan:
@@ -44,7 +46,7 @@ func Test_sendtoclient(t *testing.T) {
 					log.Printf("1秒内收到ACK 消息数据:%v, 总收到ACK消息数:%v", ackNum, totalNum)
 				}
 				ackNum = 0
-				if totalNum == sendNum+sendGroupMsgNum {
+				if totalNum == (sendNum + sendGroupMsgNum) {
 					quit <- true
 				}
 			}
@@ -72,5 +74,5 @@ func Test_sendtoclient(t *testing.T) {
 	}
 	t2 := time.Now()
 	log.Printf("send message[%v], cost time: %v", sendNum+sendGroupMsgNum, t2.Sub(t1))
-	<-disconnetchan
+	<-quit
 }
