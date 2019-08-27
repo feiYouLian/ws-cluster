@@ -36,13 +36,19 @@ var (
 	ErrPeerNoFound = errors.New("peer is not in this server")
 )
 
+// Resp Resp
+type Resp struct {
+	Status uint8
+	Err    error
+	Body   wire.Protocol
+}
+
 // Packet  Packet to hub
 type Packet struct {
 	from    wire.Addr //
 	use     uint8
 	content interface{}
-	err     chan error
-	resp    chan *wire.Message
+	resp    chan *Resp
 }
 
 // Server 服务器对象
@@ -228,10 +234,10 @@ func (h *Hub) packetQueueHandler() {
 	for {
 		select {
 		case packet := <-h.packetQueue:
-			if packet.err == nil { //throw err
-				packet.err = make(chan error)
+			if packet.resp == nil { //throw err
+				packet.resp = make(chan *Resp)
 				go func() {
-					<-packet.err
+					<-packet.resp
 				}()
 			}
 
@@ -241,8 +247,9 @@ func (h *Hub) packetQueueHandler() {
 				message.Encode(buf)
 				err := h.messageLog.Write(buf.Bytes())
 				if err != nil {
-					if packet.err != nil {
-						packet.err <- err
+					packet.resp <- &Resp{
+						Status: wire.MsgStatusException,
+						Err:    err,
 					}
 					continue
 				}
@@ -268,13 +275,13 @@ func (h *Hub) packetHandler() {
 		case packet := <-h.packetRelay:
 			switch packet.use {
 			case useForAddClientPeer:
-				h.handleClientPeerRegistPacket(packet.from, packet.content.(*ClientPeer), packet.err)
+				h.handleClientPeerRegistPacket(packet.from, packet.content.(*ClientPeer), packet.resp)
 			case useForDelClientPeer:
-				h.handleClientPeerUnregistPacket(packet.from, packet.content.(*ClientPeer), packet.err)
+				h.handleClientPeerUnregistPacket(packet.from, packet.content.(*ClientPeer), packet.resp)
 			case useForAddServerPeer:
-				h.handleServerPeerRegistPacket(packet.from, packet.content.(*ServerPeer), packet.err)
+				h.handleServerPeerRegistPacket(packet.from, packet.content.(*ServerPeer), packet.resp)
 			case useForDelServerPeer:
-				h.handleServerPeerUnregistPacket(packet.from, packet.content.(*ServerPeer), packet.err)
+				h.handleServerPeerUnregistPacket(packet.from, packet.content.(*ServerPeer), packet.resp)
 			case useForRelayMessage:
 				message := packet.content.(*wire.Message)
 				header := message.Header
@@ -282,9 +289,9 @@ func (h *Hub) packetHandler() {
 					h.recordLocation(packet.from, message)
 				}
 				if header.Dest == h.Server.Addr { // if dest address is self
-					h.handleLogicPacket(packet.from, message, packet.err, packet.resp)
+					h.handleLogicPacket(packet.from, message, packet.resp)
 				} else {
-					h.handleRelayPacket(packet.from, message, packet.err)
+					h.handleRelayPacket(packet.from, message, packet.resp)
 				}
 			}
 
@@ -315,7 +322,7 @@ func (h *Hub) recordLocation(from wire.Addr, message *wire.Message) {
 	}
 }
 
-func (h *Hub) handleClientPeerRegistPacket(from wire.Addr, peer *ClientPeer, errchan chan<- error) {
+func (h *Hub) handleClientPeerRegistPacket(from wire.Addr, peer *ClientPeer, resp chan<- *Resp) {
 	packet := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
 		LoginAt: uint64(time.Now().UnixNano()),
 	})
@@ -329,14 +336,16 @@ func (h *Hub) handleClientPeerRegistPacket(from wire.Addr, peer *ClientPeer, err
 
 	h.clientPeers[peer.Addr] = peer
 
-	errchan <- nil
+	resp <- &Resp{
+		Status: wire.MsgStatusOk,
+	}
 	return
 }
 
-func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, errchan chan<- error) {
+func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, resp chan<- *Resp) {
 	if alivePeer, ok := h.clientPeers[peer.Addr]; ok {
 		if alivePeer.RemoteAddr != peer.RemoteAddr { // this two peer are different connection, ignore unregister
-			errchan <- nil
+			resp <- &Resp{Status: wire.MsgStatusOk}
 			return
 		}
 		delete(h.clientPeers, peer.Addr)
@@ -360,34 +369,39 @@ func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, e
 			}
 		}
 	}
-	errchan <- nil
+	resp <- &Resp{Status: wire.MsgStatusOk}
 	return
 }
 
-func (h *Hub) handleServerPeerRegistPacket(from wire.Addr, peer *ServerPeer, errchan chan<- error) {
+func (h *Hub) handleServerPeerRegistPacket(from wire.Addr, peer *ServerPeer, resp chan<- *Resp) {
 	h.serverPeers[peer.Addr] = peer
-	errchan <- nil
+	resp <- &Resp{Status: wire.MsgStatusOk}
 	return
 }
 
-func (h *Hub) handleServerPeerUnregistPacket(from wire.Addr, peer *ServerPeer, errchan chan<- error) {
+func (h *Hub) handleServerPeerUnregistPacket(from wire.Addr, peer *ServerPeer, resp chan<- *Resp) {
 	delete(h.serverPeers, peer.Addr)
-	errchan <- nil
+	resp <- &Resp{Status: wire.MsgStatusOk}
 	return
 }
 
-func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, errchan chan error) {
+func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, resp chan<- *Resp) {
 	header := message.Header
 	dest := header.Dest
-
+	var response = Resp{
+		Status: wire.MsgStatusOk,
+	}
+	defer func() {
+		resp <- &response
+	}()
 	if dest.Type() == wire.AddrPeer {
 		// 在当前服务器节点中找到了目标客户端
 		if cpeer, ok := h.clientPeers[dest]; ok {
-			cpeer.PushMessage(message, errchan) //errchan pass to peer
+			cpeer.PushMessage(message, nil) //errchan pass to peer
 			return
 		}
 		if from.Type() == wire.AddrServer { //dest no found in this server .then throw out message
-			errchan <- ErrPeerNoFound
+			response.Err = ErrPeerNoFound
 			return
 		}
 		// message sent from client directly
@@ -399,7 +413,7 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, errchan c
 				speer.PushMessage(message, nil)
 			}
 		}
-		errchan <- ErrPeerNoFound
+		response.Err = ErrPeerNoFound
 	} else {
 		// 如果消息是直接来源于 client。就转发到其它服务器
 		if from.Type() == wire.AddrPeer {
@@ -413,13 +427,18 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, errchan c
 			// 消息异步发送到群中所有用户
 			h.sendToDomain(dest, message)
 		}
-		errchan <- nil
 	}
 }
 
-func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, errchan chan error, resp chan *wire.Message) {
+func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan<- *Resp) {
 	header := message.Header
 	body := message.Body
+	var response = Resp{
+		Status: wire.MsgStatusOk,
+	}
+	defer func() {
+		resp <- &response
+	}()
 
 	// if header.Source.Type() == wire.AddrPeer {
 	// 	if _, has := h.clientPeers[header.Source]; !has {
@@ -429,14 +448,15 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, errchan c
 	// 	}
 	// }
 
-	// 处理消息逻辑
 	switch header.Command {
 	case wire.MsgTypeGroupInOut:
 		msgGroup := body.(*wire.MsgGroupInOut)
 		peer := h.clientPeers[header.Source]
-
+		if peer == nil {
+			response.Err = ErrPeerNoFound
+			return
+		}
 		for _, group := range msgGroup.Groups {
-
 			switch msgGroup.InOut {
 			case wire.GroupIn:
 				peer.Groups.Add(group) //record to peer
@@ -455,27 +475,24 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, errchan c
 				}
 			}
 		}
-	case wire.MsgTypeLoc: //收到定位消息
+	case wire.MsgTypeLoc: //handle location message
 		msgLoc := body.(*wire.MsgLoc)
 		h.location[msgLoc.Peer] = msgLoc.In
 		//  regist a server to peer whether it is successful
 		peer := h.clientPeers[message.Header.Source]
 		peer.FriServers.Add(from)
-	case wire.MsgTypeOffline: //收到节点离线消息
+	case wire.MsgTypeOffline: //handle offline message
 		msgOffline := body.(*wire.MsgOffline)
 		delete(h.location, msgOffline.Peer)
 
 		peer := h.clientPeers[message.Header.Source]
 		peer.FriServers.Remove(from)
-	case wire.MsgTypeQueryClient:
+	case wire.MsgTypeQueryClient: // unfinish
 		query := body.(*wire.MsgQueryClient)
 		var msgResp = new(wire.MsgQueryClientResp)
 		if peer, has := h.clientPeers[query.Peer]; has {
 			msgResp.LoginAt = uint32(peer.LoginAt.Unix())
-
-			msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryClientResp, msgResp)
-			msg.Header.Dest = header.Source
-			resp <- msg
+			response.Body = msgResp
 		} else {
 			// relay to other server peer for quering
 		}

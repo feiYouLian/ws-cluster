@@ -25,39 +25,26 @@ type ClientPeer struct {
 
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
-	errchan := make(chan error)
+	respchan := make(chan *Resp)
 	// log.Println("receive msg", message.Header.String())
 	if message.Header.Dest.IsEmpty() { // is command message
 		message.Header.Dest = p.Server.Addr
 	}
-	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, err: errchan}
+	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, resp: respchan}
 
-	err := <-errchan
-	if err == nil {
-		return nil
-	}
-	if err == ErrPeerNoFound {
-		return err
-	}
-	header := message.Header
-	if header.Command == wire.MsgTypeChat {
-		ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
-			Err: err.Error(),
-		})
-		ackmessage.Header.Source = p.Server.Addr
-		ackmessage.Header.Dest = header.Source
-		ackmessage.Header.AckSeq = message.Header.Seq
-		p.PushMessage(ackmessage, nil)
-	}
+	resp := <-respchan
+
+	respMessage := wire.MakeEmptyRespMessage(message.Header, resp.Status)
+	p.PushMessage(respMessage, nil)
 
 	return nil
 }
 
 // OnDisconnect 接连断开
 func (p *ClientPeer) OnDisconnect() error {
-	errchan := make(chan error)
-	p.packet <- &Packet{from: p.Addr, use: useForDelClientPeer, content: p, err: errchan}
-	<-errchan
+	respchan := make(chan *Resp)
+	p.packet <- &Packet{from: p.Addr, use: useForDelClientPeer, content: p, resp: respchan}
+	<-respchan
 	log.Printf("client %v@%v disconnected", p.Addr.String(), p.RemoteAddr)
 	return nil
 }

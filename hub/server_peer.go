@@ -29,9 +29,9 @@ type ServerPeer struct {
 
 // OnMessage 接收消息
 func (p *ServerPeer) OnMessage(message *wire.Message) error {
-	err := make(chan error)
-	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, err: err}
-
+	respchan := make(chan *Resp)
+	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, resp: respchan}
+	<-respchan
 	// header := message.Header
 	// if !header.Dest.IsEmpty() {
 	// 	log.Printf("message %v to %v , Type: %v", header.Source.String(), header.Dest.String(), header.Command)
@@ -41,16 +41,17 @@ func (p *ServerPeer) OnMessage(message *wire.Message) error {
 	// 	p.hub.commandChan <- message
 	// }
 
-	return <-err
+	return nil
 }
 
 // OnDisconnect 对方断开接连
 func (p *ServerPeer) OnDisconnect() error {
 	// log.Printf("server %v disconnected ; from %v:%v", p.entity.ID, p.entity.IP, p.entity.Port)
 
-	errchan := make(chan error)
-	p.packet <- &Packet{from: p.Addr, use: useForDelServerPeer, content: p, err: errchan}
-	<-errchan
+	respchan := make(chan *Resp)
+	p.packet <- &Packet{from: p.Addr, use: useForDelServerPeer, content: p, resp: respchan}
+	<-respchan
+
 	log.Printf("server %v disconnected", p.Addr.String())
 
 	// // 尝试重连

@@ -81,12 +81,12 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
-	errchan := make(chan error, 0)
+	respchan := make(chan *Resp)
 	// 注册节点到服务器
-	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddClientPeer, content: clientPeer, err: errchan}
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddClientPeer, content: clientPeer, resp: respchan}
 
-	err = <-errchan
-	if err != nil {
+	resp := <-respchan
+	if resp.Err != nil {
 		handleHTTPErr(w, err)
 		return
 	}
@@ -135,12 +135,12 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errchan := make(chan error, 0)
+	respchan := make(chan *Resp)
 	// 注册节点到服务器
-	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddServerPeer, content: serverPeer, err: errchan}
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddServerPeer, content: serverPeer, resp: respchan}
 
-	err = <-errchan
-	if err != nil {
+	resp := <-respchan
+	if resp.Err != nil {
 		handleHTTPErr(w, err)
 		return
 	}
@@ -179,7 +179,7 @@ func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Reque
 		fmt.Fprint(w, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	respchan := make(chan *wire.Message)
+	respchan := make(chan *Resp)
 
 	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryClient, &wire.MsgQueryClient{
 		Peer: *addr,
@@ -187,10 +187,9 @@ func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Reque
 	msg.Header.Dest = hub.Server.Addr
 	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
 
-	message := <-respchan
-
-	resp := message.Body.(*wire.MsgQueryClientResp)
-	fmt.Fprint(w, resp.LoginAt)
+	resp := <-respchan
+	query := resp.Body.(*wire.MsgQueryClientResp)
+	fmt.Fprint(w, query.LoginAt)
 }
 
 func checkDigest(secret, text, digest string) bool {

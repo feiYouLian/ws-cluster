@@ -175,11 +175,12 @@ func (p *Peer) inMessageHandler() {
 				msg.Header.Source = p.Addr // set source
 			}
 
-			err = p.config.Listeners.OnMessage(msg)
-			if err != nil {
-				log.Println("peer.go line:162 ", p.Addr.String(), err)
-			}
-
+			go func() {
+				err = p.config.Listeners.OnMessage(msg)
+				if err != nil {
+					log.Println("peer.go line:162 ", p.Addr.String(), err)
+				}
+			}()
 		}
 	}
 }

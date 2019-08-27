@@ -143,7 +143,11 @@ func sendtoclient(peer *peer.Peer, to wire.Addr) {
 	msg.Header.Source = peer.Addr
 	msg.Header.Dest = to
 	peer.PushMessage(msg, done)
-	<-done
+	err := <-done
+	if err != nil {
+		fmt.Println(err)
+	}
+
 }
 
 var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
@@ -164,8 +168,8 @@ func main() {
 	// peers := make(map[string]*ClientPeer, peerNum)
 
 	msgchan := make(chan *wire.Message, 100)
-	connetchan := make(chan *peer.Peer, 1)
-	disconnetchan := make(chan *peer.Peer, 1)
+	connetchan := make(chan *peer.Peer, 100)
+	disconnetchan := make(chan *peer.Peer, 100)
 	var quit = make(chan bool)
 
 	intervalMsgNum := 0
