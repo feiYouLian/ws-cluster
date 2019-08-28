@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	mapset "github.com/deckarep/golang-set"
 	"github.com/gorilla/websocket"
 
 	// cmap "github.com/orcaman/concurrent-map"
@@ -67,7 +66,7 @@ type Hub struct {
 	clientPeers map[wire.Addr]*ClientPeer
 	// serverPeers 缓存服务端节点数据
 	serverPeers map[wire.Addr]*ServerPeer
-	groups      map[wire.Addr]mapset.Set
+	groups      map[wire.Addr]*Group
 	location    map[wire.Addr]wire.Addr // client location in server
 
 	messageLog *filelog.FileLog
@@ -113,7 +112,7 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		clientPeers:     make(map[wire.Addr]*ClientPeer, 10000),
 		serverPeers:     make(map[wire.Addr]*ServerPeer, 10),
 		location:        make(map[wire.Addr]wire.Addr, 10000),
-		groups:          make(map[wire.Addr]mapset.Set, 100),
+		groups:          make(map[wire.Addr]*Group, 100),
 		packetQueue:     make(chan *Packet, 1),
 		packetRelay:     make(chan *Packet, 1),
 		packetRelayDone: make(chan *Packet, 1),
@@ -368,7 +367,7 @@ func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, r
 		alivePeer.Groups.Each(func(elem interface{}) bool {
 			gAddr := elem.(wire.Addr)
 			if group, has := h.groups[gAddr]; has {
-				group.Remove(peer)
+				group.packet <- &GroupPacket{useForLeave, peer}
 			}
 			return false
 		})
@@ -469,7 +468,9 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, resp chan
 
 		if dest.Type() == wire.AddrGroup {
 			// 消息异步发送到群中所有用户
-			h.sendToGroup(dest, message)
+			if group, has := h.groups[dest]; has {
+				group.packet <- &GroupPacket{useForMessage, message}
+			}
 		} else if dest.Type() == wire.AddrBroadcast {
 			// 消息异步发送到群中所有用户
 			h.sendToDomain(dest, message)
@@ -508,18 +509,22 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 			case wire.GroupIn:
 				peer.Groups.Add(group) //record to peer
 				if _, ok := h.groups[group]; !ok {
-					h.groups[group] = mapset.NewThreadUnsafeSet() // initial group
+					h.groups[group] = NewGroup(group)
 				}
-
-				h.groups[group].Add(peer) // not pointer
+				h.groups[group].packet <- &GroupPacket{useForJoin, peer}
 			case wire.GroupOut:
 				peer.Groups.Remove(group)
-				h.groups[group].Remove(peer)
-				if h.groups[group].Cardinality() == 0 { // clean group
-					if len(h.groups) > 1000 {
-						delete(h.groups, group)
+				if g, has := h.groups[group]; has {
+					g.packet <- &GroupPacket{useForLeave, peer}
+
+					if g.MemCount == 0 {
+						if len(h.groups) > 1000 { // clean group
+							g.Exit() //stop
+							delete(h.groups, group)
+						}
 					}
 				}
+
 			}
 		}
 	case wire.MsgTypeLoc: //handle location message
@@ -559,23 +564,23 @@ func (h *Hub) responseMessage(from wire.Addr, message *wire.Message) {
 
 var errMessageReceiverOffline = errors.New("Message Receiver is offline")
 
-func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
-	// 读取群用户列表。转发
-	peers, has := h.groups[group]
-	if !has {
-		return
-	}
+// func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
+// 	// 读取群用户列表。转发
+// 	peers, has := h.groups[group]
+// 	if !has {
+// 		return
+// 	}
 
-	if peers.Cardinality() == 0 {
-		return
-	}
+// 	if peers.Cardinality() == 0 {
+// 		return
+// 	}
 
-	peers.Each(func(elem interface{}) bool {
-		elem.(*ClientPeer).PushMessage(message, nil)
-		return false
-	})
+// 	peers.Each(func(elem interface{}) bool {
+// 		elem.(*ClientPeer).PushMessage(message, nil)
+// 		return false
+// 	})
 
-}
+// }
 
 func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
 	for addr, cpeer := range h.clientPeers {
