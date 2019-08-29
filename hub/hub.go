@@ -330,8 +330,9 @@ func (h *Hub) recordLocation(from wire.Addr, message *wire.Message) {
 		})
 		loc.Header.Dest = from
 		loc.Header.Source = h.Server.Addr
-		speer := h.serverPeers[from]
-		speer.PushMessage(loc, nil)
+		if speer, has := h.serverPeers[from]; has {
+			speer.PushMessage(loc, nil)
+		}
 	}
 }
 

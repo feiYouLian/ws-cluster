@@ -34,17 +34,17 @@ type ClientPeer struct {
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	respchan := make(chan *Resp)
-	log.Println("receive msg", message.Header.String())
+
 	if message.Header.Dest.IsEmpty() { // is command message
 		message.Header.Dest = p.Server.Addr
 	}
 	p.packet <- &Packet{from: p.Addr, use: useForRelayMessage, content: message, resp: respchan}
 
 	resp := <-respchan
-
 	respMessage := wire.MakeEmptyRespMessage(message.Header, resp.Status)
 	p.PushMessage(respMessage, nil)
-	log.Println("respose msg", respMessage.Header.String())
+	log.Println("message", message.Header.String(), "resp status:", respMessage.Header.Status)
+
 	return nil
 }
 
