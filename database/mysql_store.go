@@ -35,8 +35,20 @@ func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
 	}
 }
 
-// Save save message to mysql
-func (s *MysqMessageStore) Save(msgs ...interface{}) error {
+// SaveChatMsg save message to mysql
+func (s *MysqMessageStore) SaveChatMsg(msgs []*ChatMsg) error {
+	if s.engine == nil {
+		return nil
+	}
+	_, err := s.engine.Insert(msgs)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// SaveGroupMsg SaveGroupMsg
+func (s *MysqMessageStore) SaveGroupMsg(msgs []*GroupMsg) error {
 	if s.engine == nil {
 		return nil
 	}

@@ -39,6 +39,7 @@ func main() {
 	var engine *xorm.Engine
 	if cfg.Mysql.IP != "" {
 		engine = database.InitDb(cfg.Mysql.IP, cfg.Mysql.Port, cfg.Mysql.User, cfg.Mysql.Password, cfg.Mysql.DbName)
+		engine.Sync(new(database.ChatMsg), new(database.GroupMsg))
 	}
 	cfg.MessageStore = database.NewMysqlMessageStore(engine)
 

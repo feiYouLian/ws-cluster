@@ -603,7 +603,8 @@ func (h *Hub) broadcast(message *wire.Message) {
 }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
-	messages := make([]interface{}, 0)
+	chatmsgs := make([]*database.ChatMsg, 0)
+	groupmsgs := make([]*database.GroupMsg, 0)
 	for _, buf := range bufs {
 		packet := new(wire.Message)
 		if err := packet.Decode(buf); err != nil {
@@ -626,9 +627,9 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 				Extra:      body.Extra,
 				CreateAt:   time.Now(),
 			}
-			messages = append(messages, dbmsg)
+			chatmsgs = append(chatmsgs, dbmsg)
 		} else if header.Dest.Type() == wire.AddrGroup {
-			dbmsg := &database.RoomMsg{
+			dbmsg := &database.GroupMsg{
 				FromDomain: header.Source.Domain(),
 				ToDomain:   header.Dest.Domain(),
 				From:       header.Source.Address(),
@@ -638,13 +639,22 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 				Extra:      body.Extra,
 				CreateAt:   time.Now(),
 			}
-			messages = append(messages, dbmsg)
+			groupmsgs = append(groupmsgs, dbmsg)
 		}
 	}
-	err := messageStore.Save(messages...)
-	if err != nil {
-		return err
+	if len(chatmsgs) > 0 {
+		err := messageStore.SaveChatMsg(chatmsgs)
+		if err != nil {
+			return err
+		}
 	}
+	if len(groupmsgs) > 0 {
+		err := messageStore.SaveGroupMsg(groupmsgs)
+		if err != nil {
+			return err
+		}
+	}
+
 	// log.Printf("save messages : %v ", len(messages))
 	return nil
 }

@@ -45,8 +45,8 @@ type ChatMsg struct {
 	CreateAt   time.Time
 }
 
-// RoomMsg room消息
-type RoomMsg struct {
+// GroupMsg room消息
+type GroupMsg struct {
 	ID         uint64 `xorm:"pk autoincr 'id'"`
 	FromDomain uint32
 	ToDomain   uint32
