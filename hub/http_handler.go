@@ -164,7 +164,8 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// fmt.Println("httpSendMsg ", r.RemoteAddr, body.To, body.Text)
+
+	fmt.Println("httpSendMsg ", r.RemoteAddr, body.Dest)
 
 	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeChat, &wire.Msgchat{
 		Text:  body.Text,
@@ -172,12 +173,28 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Extra: body.Extra,
 	})
 
-	source, _ := wire.ParsePeerAddr(body.Source)
-	dest, _ := wire.ParsePeerAddr(body.Dest)
+	source, err := wire.ParseAddr(body.Source)
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
+	dest, err := wire.ParseAddr(body.Dest)
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
 	msg.Header.Source = *source
 	msg.Header.Dest = *dest
-	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg}
-	fmt.Fprint(w, "ok")
+	respchan := make(chan *Resp)
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
+	resp := <-respchan
+
+	if resp.Status == wire.MsgStatusOk {
+		fmt.Fprint(w, "ok")
+	} else {
+		fmt.Fprint(w, "fail")
+		w.WriteHeader(http.StatusExpectationFailed)
+	}
 }
 
 func checkDigest(secret, text, digest string) bool {

@@ -151,7 +151,7 @@ func sendtoclient(peer *peer.Peer, to wire.Addr) {
 
 }
 
-var wshosts = []string{"192.168.0.127:8380", "192.168.0.127:8380"}
+var wshosts = []string{"192.168.0.188:8380", "192.168.0.188:8380"}
 
 // var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
 var peerNum = 1
@@ -211,16 +211,15 @@ func main() {
 					quit <- true
 				}
 			case message := <-msgchan:
+				intervalMsgNum++
 				if message.Header.AckSeq > 0 { // join group ack
 					groupNum++
-
 					continue
 				}
-				intervalMsgNum++
 				totalMsgNum++
 			case <-ticker.C:
 				if intervalMsgNum > 0 {
-					log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,总节点数：%v", intervalMsgNum, totalMsgNum, totalPeerNum)
+					log.Printf("1秒内收到消息数据：%v,总接收消息数：%v,groupNum:%v,总节点数：%v", intervalMsgNum, totalMsgNum, groupNum, totalPeerNum)
 				}
 				intervalMsgNum = 0
 			}

@@ -41,6 +41,14 @@ var AddrMap = map[byte]rune{
 	AddrBroadcast: 'b',
 }
 
+// AddrReMap AddrReMap
+var AddrReMap = map[string]byte{
+	"p": AddrPeer,
+	"s": AddrServer,
+	"g": AddrGroup,
+	"b": AddrBroadcast,
+}
+
 var (
 	// ErrAddrOverflow ErrAddrOverflow
 	ErrAddrOverflow = errors.New("address is overflow")
@@ -101,6 +109,17 @@ func ParsePeerAddr(addr string) (*Addr, error) {
 	domain, _ := strconv.Atoi(addrs[2])
 	device, _ := strconv.Atoi(addrs[3])
 	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[4])
+}
+
+// ParseAddr ParseAddr
+func ParseAddr(addr string) (*Addr, error) {
+	addrs := strings.SplitN(addr, "/", 5)
+	if len(addrs) != 5 {
+		return nil, ErrInvaildAddress
+	}
+	domain, _ := strconv.Atoi(addrs[2])
+	device, _ := strconv.Atoi(addrs[3])
+	return NewAddr(AddrReMap[addrs[1]], uint32(domain), byte(device), addrs[4])
 }
 
 // ParseGroupAddr new a group address
