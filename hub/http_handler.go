@@ -48,7 +48,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	nonce := q.Get("nonce")
 	digest := q.Get("digest")
 	offlineNotice := uint8(0)
-	if q.Get("off") == "1" {
+	if q.Get("notice") == "1" {
 		offlineNotice = uint8(1)
 	}
 
@@ -62,14 +62,15 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// upgrade
-	conn, err := hub.upgrader.Upgrade(w, r, nil)
+	peerAddr, err := wire.ParsePeerAddr(addr)
 	if err != nil {
+		log.Println("address error", addr)
 		handleHTTPErr(w, err)
 		return
 	}
 
-	peerAddr, err := wire.ParsePeerAddr(addr)
+	// upgrade
+	conn, err := hub.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
@@ -93,7 +94,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	log.Printf("client %v@%v connected", addr, r.RemoteAddr)
 	ack := wire.MakeEmptyHeaderMessage(wire.MsgTypeLoginAck, &wire.MsgLoginAck{
 		RemoteAddr: r.RemoteAddr,
-		LoginAt:    uint64(time.Now().UnixNano()),
+		LoginAt:    uint64(time.Now().UnixNano() / 1000000),
 	})
 	clientPeer.PushMessage(ack, nil)
 }

@@ -183,6 +183,7 @@ func MakeEmptyRespMessage(from *Header, status uint8) *Message {
 		Dest:    from.Source,
 		AckSeq:  from.Seq,
 		Command: MsgTypeEmpty,
+		Status:  status,
 	}
 	return &Message{
 		Header: header,

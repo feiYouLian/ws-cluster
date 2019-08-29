@@ -34,7 +34,7 @@ type ClientPeer struct {
 // OnMessage 接收消息
 func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	respchan := make(chan *Resp)
-	// log.Println("receive msg", message.Header.String())
+	log.Println("receive msg", message.Header.String())
 	if message.Header.Dest.IsEmpty() { // is command message
 		message.Header.Dest = p.Server.Addr
 	}
@@ -44,7 +44,7 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 
 	respMessage := wire.MakeEmptyRespMessage(message.Header, resp.Status)
 	p.PushMessage(respMessage, nil)
-
+	log.Println("respose msg", respMessage.Header.String())
 	return nil
 }
 

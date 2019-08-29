@@ -30,7 +30,7 @@ const (
 	// AddrGroup group address
 	AddrGroup = byte(3)
 	// AddrBroadcast broadcast address
-	AddrBroadcast = byte(7) //max value
+	AddrBroadcast = byte(4)
 )
 
 // AddrMap addr byte to char

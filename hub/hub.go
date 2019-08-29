@@ -337,7 +337,7 @@ func (h *Hub) recordLocation(from wire.Addr, message *wire.Message) {
 
 func (h *Hub) handleClientPeerRegistPacket(from wire.Addr, peer *ClientPeer, resp chan<- *Resp) {
 	packet := wire.MakeEmptyHeaderMessage(wire.MsgTypeKill, &wire.MsgKill{
-		LoginAt: uint64(time.Now().UnixNano()),
+		LoginAt: uint64(time.Now().UnixNano() / 1000000),
 	})
 	packet.Header.Source = peer.Addr
 	packet.Header.Dest = peer.Addr // same addr
