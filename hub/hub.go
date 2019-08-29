@@ -602,7 +602,7 @@ func (h *Hub) broadcast(message *wire.Message) {
 }
 
 func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) error {
-	messages := make([]*database.ChatMsg, 0)
+	messages := make([]interface{}, 0)
 	for _, buf := range bufs {
 		packet := new(wire.Message)
 		if err := packet.Decode(buf); err != nil {
@@ -614,18 +614,31 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 			continue
 		}
 		body := packet.Body.(*wire.Msgchat)
-		dbmsg := &database.ChatMsg{
-			FromDomain: header.Source.Domain(),
-			ToDomain:   header.Dest.Domain(),
-			From:       header.Source.Address(),
-			To:         header.Dest.Address(),
-			Scope:      header.Dest.Type(),
-			Type:       body.Type,
-			Text:       body.Text,
-			Extra:      body.Extra,
-			CreateAt:   time.Now(),
+		if header.Dest.Type() == wire.AddrPeer {
+			dbmsg := &database.ChatMsg{
+				FromDomain: header.Source.Domain(),
+				ToDomain:   header.Dest.Domain(),
+				From:       header.Source.Address(),
+				To:         header.Dest.Address(),
+				Type:       body.Type,
+				Text:       body.Text,
+				Extra:      body.Extra,
+				CreateAt:   time.Now(),
+			}
+			messages = append(messages, dbmsg)
+		} else if header.Dest.Type() == wire.AddrGroup {
+			dbmsg := &database.RoomMsg{
+				FromDomain: header.Source.Domain(),
+				ToDomain:   header.Dest.Domain(),
+				From:       header.Source.Address(),
+				To:         header.Dest.Address(),
+				Type:       body.Type,
+				Text:       body.Text,
+				Extra:      body.Extra,
+				CreateAt:   time.Now(),
+			}
+			messages = append(messages, dbmsg)
 		}
-		messages = append(messages, dbmsg)
 	}
 	err := messageStore.Save(messages...)
 	if err != nil {

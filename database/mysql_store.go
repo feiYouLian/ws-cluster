@@ -6,8 +6,8 @@ import (
 
 	// just init
 	_ "github.com/go-sql-driver/mysql"
-	"xorm.io/core"
 	"github.com/go-xorm/xorm"
+	"xorm.io/core"
 )
 
 var (
@@ -36,11 +36,11 @@ func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
 }
 
 // Save save message to mysql
-func (s *MysqMessageStore) Save(chatMsgs ...*ChatMsg) error {
+func (s *MysqMessageStore) Save(msgs ...interface{}) error {
 	if s.engine == nil {
 		return nil
 	}
-	_, err := s.engine.Insert(chatMsgs)
+	_, err := s.engine.Insert(msgs)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/ws-cluster/config"
-	"github.com/ws-cluster/database"
 	"github.com/ws-cluster/wire"
 )
 
@@ -149,9 +148,18 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	log.Printf("server %v connected", serverAddr.String())
 }
 
+// MsgBody MsgBody
+type MsgBody struct {
+	Source string
+	Dest   string
+	Type   uint8
+	Text   string
+	Extra  string
+}
+
 // 处理 http 过来的消息发送
 func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	var body database.ChatMsg
+	var body MsgBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -164,8 +172,8 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Extra: body.Extra,
 	})
 
-	source, _ := wire.NewAddr(wire.AddrVirtual, body.FromDomain, wire.DevicePhone, body.From)
-	dest, _ := wire.NewAddr(wire.AddrPeer, body.FromDomain, wire.DevicePhone, body.To)
+	source, _ := wire.ParsePeerAddr(body.Source)
+	dest, _ := wire.ParsePeerAddr(body.Dest)
 	msg.Header.Source = *source
 	msg.Header.Dest = *dest
 	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg}

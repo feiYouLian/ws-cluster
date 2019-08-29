@@ -13,17 +13,22 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/ws-cluster/database"
-
-	"github.com/ws-cluster/wire"
 )
 
 const (
 	secret = "xxx123456"
 )
 
-const sendurl = "http://192.168.0.127:8380/msg/send"
+const sendurl = "http://192.168.0.188:8380/msg/send"
+
+// MsgBody MsgBody
+type MsgBody struct {
+	Source string
+	Dest   string
+	Type   uint8
+	Text   string
+	Extra  string
+}
 
 func main() {
 	wg := sync.WaitGroup{}
@@ -35,12 +40,11 @@ func main() {
 	for index := 0; index < num; index++ {
 		wg.Add(1)
 		go func() {
-			msg := database.ChatMsg{
-				From:  "sys",
-				Scope: wire.AddrGroup,
-				To:    "test",
-				Type:  1,
-				Text:  "hello",
+			msg := MsgBody{
+				Source: "/p/1/0/sys",
+				Dest:   "/p/1/1/test",
+				Type:   1,
+				Text:   "hello",
 			}
 
 			d, _ := json.Marshal(msg)

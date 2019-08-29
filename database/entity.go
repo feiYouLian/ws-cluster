@@ -32,13 +32,25 @@ type Server struct {
 	OutServers map[string]string
 }
 
-// ChatMsg 聊消息
+// ChatMsg chat消息
 type ChatMsg struct {
 	ID         uint64 `xorm:"pk autoincr 'id'"`
 	FromDomain uint32
 	ToDomain   uint32
 	From       string
-	Scope      uint8
+	To         string
+	Type       uint8  //msg type
+	Text       string `xorm:"varchar(1024)"`
+	Extra      string
+	CreateAt   time.Time
+}
+
+// RoomMsg room消息
+type RoomMsg struct {
+	ID         uint64 `xorm:"pk autoincr 'id'"`
+	FromDomain uint32
+	ToDomain   uint32
+	From       string
 	To         string
 	Type       uint8  //msg type
 	Text       string `xorm:"varchar(1024)"`
