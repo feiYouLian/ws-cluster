@@ -42,7 +42,7 @@ func main() {
 		go func() {
 			msg := MsgBody{
 				Source: "/p/1/0/sys",
-				Dest:   "/p/1/1/test",
+				Dest:   "/g/1/0/test",
 				Type:   1,
 				Text:   "hello",
 			}
