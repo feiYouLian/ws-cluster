@@ -19,7 +19,7 @@ const (
 	secret = "xxx123456"
 )
 
-const sendurl = "http://192.168.0.188:8380/msg/send"
+const sendurl = "http://192.168.0.127:8380/msg/send"
 
 // MsgBody MsgBody
 type MsgBody struct {
@@ -41,7 +41,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			msg := MsgBody{
-				Source: "/p/1/0/sys",
+				Source: "/p/1/1/sys",
 				Dest:   "/g/1/0/test",
 				Type:   1,
 				Text:   "hello",
@@ -65,5 +65,4 @@ func main() {
 	}
 
 	wg.Wait()
-
 }
