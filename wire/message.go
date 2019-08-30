@@ -160,6 +160,8 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgOffline{}
 	case MsgTypeOfflineNotice:
 		body = &MsgOfflineNotice{}
+	case MsgTypeQueryClient:
+		body = &MsgQueryClient{}
 	case MsgTypeEmpty:
 		body = &MsgEmpty{}
 	default:
