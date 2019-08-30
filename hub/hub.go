@@ -563,26 +563,6 @@ func (h *Hub) responseMessage(from wire.Addr, message *wire.Message) {
 	}
 }
 
-var errMessageReceiverOffline = errors.New("Message Receiver is offline")
-
-// func (h *Hub) sendToGroup(group wire.Addr, message *wire.Message) {
-// 	// 读取群用户列表。转发
-// 	peers, has := h.groups[group]
-// 	if !has {
-// 		return
-// 	}
-
-// 	if peers.Cardinality() == 0 {
-// 		return
-// 	}
-
-// 	peers.Each(func(elem interface{}) bool {
-// 		elem.(*ClientPeer).PushMessage(message, nil)
-// 		return false
-// 	})
-
-// }
-
 func (h *Hub) sendToDomain(dest wire.Addr, message *wire.Message) {
 	for addr, cpeer := range h.clientPeers {
 		if addr.Domain() == dest.Domain() {

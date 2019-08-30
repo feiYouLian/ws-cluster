@@ -28,7 +28,7 @@ func NewGroup(addr wire.Addr) *Group {
 	group := &Group{
 		Addr:    addr,
 		Members: make(map[wire.Addr]*ClientPeer),
-		packet:  make(chan *GroupPacket, 500),
+		packet:  make(chan *GroupPacket, 50),
 		exit:    make(chan struct{}, 1),
 	}
 	go group.loop()

@@ -25,7 +25,7 @@ func Test_sendtoclient(t *testing.T) {
 
 	peerNum := 10
 	sendNum := 0
-	sendGroupMsgNum := 10000
+	sendGroupMsgNum := 1000
 
 	defer ticker.Stop()
 	go func() {
@@ -70,7 +70,7 @@ func Test_sendtoclient(t *testing.T) {
 	testgroup, _ := wire.NewGroupAddr(1, "test")
 	for index := 0; index < sendGroupMsgNum; index++ {
 		sendtoclient(syspeer.Peer, *testgroup)
-		// time.Sleep(time.Second)
+		time.Sleep(time.Second)
 	}
 	t2 := time.Now()
 	log.Printf("send message[%v], cost time: %v", sendNum+sendGroupMsgNum, t2.Sub(t1))

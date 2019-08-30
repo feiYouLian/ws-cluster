@@ -84,7 +84,6 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	respchan := make(chan *Resp)
 	// 注册节点到服务器
 	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForAddClientPeer, content: clientPeer, resp: respchan}
-
 	resp := <-respchan
 	if resp.Err != nil {
 		handleHTTPErr(w, err)
