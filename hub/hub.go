@@ -489,14 +489,6 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 		resp <- &response
 	}()
 
-	// if header.Source.Type() == wire.AddrPeer {
-	// 	if _, has := h.clientPeers[header.Source]; !has {
-	// 		resp := wire.MakeEmptyRespMessage(header, wire.MsgStatusSourceNoFound)
-	// 		h.responseMessage(from, resp)
-	// 		return
-	// 	}
-	// }
-
 	switch header.Command {
 	case wire.MsgTypeGroupInOut:
 		msgGroup := body.(*wire.MsgGroupInOut)
