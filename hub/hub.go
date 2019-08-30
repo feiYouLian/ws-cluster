@@ -544,6 +544,13 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 				peer.PushMessage(offlineNotice, nil)
 			}
 		}
+	case wire.MsgTypeQueryClient:
+		query := body.(*wire.MsgQueryClient)
+		var msgResp = new(wire.MsgQueryClientResp)
+		if peer, has := h.clientPeers[query.Peer]; has {
+			msgResp.LoginAt = uint32(peer.LoginAt.Unix())
+		}
+		response.Body = msgResp
 	}
 }
 

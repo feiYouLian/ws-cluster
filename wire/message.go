@@ -22,6 +22,8 @@ const (
 	MsgTypeOffline = uint8(11)
 	// MsgTypeOfflineNotice MsgTypeOfflineNotice
 	MsgTypeOfflineNotice = uint8(13)
+	// MsgTypeQueryClient MsgTypeQueryClient
+	MsgTypeQueryClient = uint8(15)
 
 	// MsgTypeEmpty MsgTypeEmpty
 	MsgTypeEmpty = uint8(200)

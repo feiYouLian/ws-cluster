@@ -31,6 +31,10 @@ func httplisten(hub *Hub, conf *config.ServerConfig) {
 		httpSendMsgHandler(hub, w, r)
 	})
 
+	http.HandleFunc("/q/online", func(w http.ResponseWriter, r *http.Request) {
+		httpQueryClientOnlineHandler(hub, w, r)
+	})
+
 	log.Println("listen on ", fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort))
 	err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort), nil)
 
@@ -194,6 +198,28 @@ func httpSendMsgHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "fail")
 		w.WriteHeader(http.StatusExpectationFailed)
 	}
+}
+
+// 处理 http 过来的消息发送
+func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	addrstr := r.URL.Query().Get("addr")
+	addr, err := wire.ParseAddr(addrstr)
+	if err != nil {
+		fmt.Fprint(w, err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	respchan := make(chan *Resp)
+
+	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryClient, &wire.MsgQueryClient{
+		Peer: *addr,
+	})
+	msg.Header.Dest = hub.Server.Addr
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
+
+	resp := <-respchan
+
+	qu := resp.Body.(*wire.MsgQueryClientResp)
+	fmt.Fprint(w, qu.LoginAt)
 }
 
 func checkDigest(secret, text, digest string) bool {
