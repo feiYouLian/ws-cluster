@@ -308,7 +308,12 @@ func (h *Hub) recordSession(from wire.Addr, header *wire.Header) {
 			} else {
 				peer.AddSession(header.Source, from)
 			}
+
+			if speer, has := h.clientPeers[header.Source]; has {
+				speer.AddSession(header.Dest, h.Server.Addr)
+			}
 		}
+
 	}
 }
 
