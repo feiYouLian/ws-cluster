@@ -33,7 +33,7 @@ func newPeer(addr wire.Addr, serverhost, secret string, OnMessage func(message *
 	io.WriteString(h, nonce)
 	io.WriteString(h, secret)
 
-	query := fmt.Sprintf("addr=%v&nonce=%v&digest=%v", addr.String(), nonce, hex.EncodeToString(h.Sum(nil)))
+	query := fmt.Sprintf("addr=%v&nonce=%v&digest=%v&notice=1", addr.String(), nonce, hex.EncodeToString(h.Sum(nil)))
 
 	u := url.URL{Scheme: "ws", Host: serverhost, Path: "/client", RawQuery: query}
 	log.Printf("connecting to %s", u.String())
@@ -151,7 +151,7 @@ func sendtoclient(peer *peer.Peer, to wire.Addr) {
 
 }
 
-var wshosts = []string{"192.168.0.216:8380", "192.168.0.216:8380"}
+var wshosts = []string{"192.168.0.214:8380", "192.168.0.214:8380"}
 
 // var wshosts = []string{"192.168.0.127:8380", "192.168.0.127:8380"}
 

@@ -23,9 +23,9 @@ func Test_sendtoclient(t *testing.T) {
 	totalNum := 0
 	ticker := time.NewTicker(time.Second)
 
-	peerNum := 10
-	sendNum := 0
-	sendGroupMsgNum := 1000
+	peerNum := 1
+	sendNum := peerNum
+	sendGroupMsgNum := 0
 
 	defer ticker.Stop()
 	go func() {
@@ -38,6 +38,7 @@ func Test_sendtoclient(t *testing.T) {
 			case message := <-msgchan:
 				if message.Header.AckSeq > 0 {
 					ackNum++
+					continue
 				}
 				totalNum++
 				// log.Println(" header", message.Header.String())

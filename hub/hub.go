@@ -374,7 +374,7 @@ func (h *Hub) handleClientPeerUnregistPacket(from wire.Addr, peer *ClientPeer, r
 		})
 
 		// notice other server your are offline
-		for server, peers := range peer.getAllSessionServers() {
+		for server, peers := range alivePeer.getAllSessionServers() {
 			offline := wire.MakeEmptyHeaderMessage(wire.MsgTypeOffline, &wire.MsgOffline{
 				Peer:    peer.Addr,
 				Targets: peers,
