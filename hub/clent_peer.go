@@ -103,12 +103,11 @@ func (p *ClientPeer) AddSession(peer, server wire.Addr) bool {
 func (p *ClientPeer) getAllSessionServers() map[wire.Addr][]wire.Addr {
 	servers := make(map[wire.Addr][]wire.Addr, 0)
 	for _, session := range p.Sessions {
-		serverpeers, has := servers[session.ServerAddr]
+		_, has := servers[session.ServerAddr]
 		if !has {
 			servers[session.ServerAddr] = make([]wire.Addr, 0)
-			serverpeers = servers[session.ServerAddr]
 		}
-		serverpeers = append(serverpeers, session.PeerAddr)
+		servers[session.ServerAddr] = append(servers[session.ServerAddr], session.PeerAddr)
 	}
 	return servers
 }
