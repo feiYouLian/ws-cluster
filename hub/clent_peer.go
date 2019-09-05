@@ -70,7 +70,7 @@ func newClientPeer(addr wire.Addr, remoteAddr string, offlineNotice uint8, h *Hu
 			OnMessage:    clientPeer.OnMessage,
 			OnDisconnect: clientPeer.OnDisconnect,
 		},
-		MaxMessageSize: h.config.Peer.MaxMessageSize,
+		MaxMessageSize: h.config.cpc.MaxMessageSize,
 	})
 
 	clientPeer.Peer = peer

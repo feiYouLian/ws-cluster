@@ -3,7 +3,7 @@ package hub
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -79,13 +79,14 @@ func (p *ServerPeer) connect() error {
 	host := p.HostServer
 	// 生成加密摘要
 	h := md5.New()
-	io.WriteString(h, fmt.Sprintf("%v%v", host.Addr.String(), host.URL.String()))
+	io.WriteString(h, host.Addr.String())
 	io.WriteString(h, host.Secret)
 	digest := hex.EncodeToString(h.Sum(nil))
 
 	header := http.Header{}
 	header.Add("id", host.Addr.String())
-	header.Add("url", host.URL.String())
+	header.Add("server_url", host.AdvertiseServerURL.String())
+	header.Add("peer_url", host.AdvertiseClientURL.String())
 	header.Add("digest", digest)
 
 	// log.Printf("connecting to %s", u.String())
@@ -95,10 +96,13 @@ func (p *ServerPeer) connect() error {
 		HandshakeTimeout: 3 * time.Second,
 	}
 
-	conn, _, err := dialar.Dial(p.URL.String(), header)
+	conn, resp, err := dialar.Dial(p.URL.String(), header)
 	if err != nil {
 		log.Println("dial:", err)
 		return err
+	}
+	if resp.StatusCode != 200 {
+		return errors.New("invaild peer")
 	}
 	p.SetConnection(conn)
 	return nil
@@ -106,11 +110,10 @@ func (p *ServerPeer) connect() error {
 
 // newServerPeer 主动去连接另一台服务节点器
 func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
-
 	serverPeer := &ServerPeer{
 		// Addr:       server.Addr,
 		HostServer: h.Server,
-		URL:        server.URL,
+		URL:        server.AdvertiseServerURL,
 		IsOut:      true,
 		packet:     h.packetQueue,
 	}
@@ -140,7 +143,7 @@ func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr str
 	serverPeer := &ServerPeer{
 		// Addr:       server.Addr,
 		HostServer: h.Server,
-		URL:        server.URL,
+		URL:        server.AdvertiseServerURL,
 		IsOut:      false,
 		packet:     h.packetQueue,
 	}

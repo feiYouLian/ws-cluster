@@ -11,12 +11,12 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ws-cluster/config"
+	"github.com/gorilla/websocket"
 	"github.com/ws-cluster/wire"
 )
 
 // start http server ,this function must be in a routine
-func httplisten(hub *Hub, conf *config.ServerConfig) {
+func httplisten(hub *Hub, conf *serverConfig) {
 
 	// regist a service for client
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +35,8 @@ func httplisten(hub *Hub, conf *config.ServerConfig) {
 		httpQueryClientOnlineHandler(hub, w, r)
 	})
 
-	log.Println("listen on ", fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort))
-	err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.ListenIP, conf.ListenPort), nil)
-
+	log.Println("listen on ", conf.ListenHost)
+	err := http.ListenAndServe(conf.ListenHost, nil)
 	if err != nil {
 		log.Println("ListenAndServe: ", err)
 		return
@@ -61,11 +60,11 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v", addr, nonce), digest) {
+	if !checkDigest(hub.config.sc.Secret, fmt.Sprintf("%v%v", addr, nonce), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	peerAddr, err := wire.ParsePeerAddr(addr)
+	peerAddr, err := wire.ParseClientAddr(addr)
 	if err != nil {
 		log.Println("address error", addr)
 		handleHTTPErr(w, err)
@@ -101,10 +100,20 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	clientPeer.PushMessage(ack, nil)
 }
 
+var supgrader = &websocket.Upgrader{
+	ReadBufferSize:  10240,
+	WriteBufferSize: 10240,
+}
+
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addrstr := r.Header.Get("addr")
-	URL, err := url.Parse(r.Header.Get("url"))
+	ServerURL, err := url.Parse(r.Header.Get("server_url"))
+	if err != nil {
+		handleHTTPErr(w, err)
+		return
+	}
+	PeerURL, err := url.Parse(r.Header.Get("peer_url"))
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
@@ -117,21 +126,22 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.Server.Secret, fmt.Sprintf("%v%v", addrstr, URL.String()), digest) {
+	if !checkDigest(hub.config.sc.Secret, addrstr, digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	conn, err := hub.upgrader.Upgrade(w, r, nil)
+	conn, err := supgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	serverPeer, err := bindServerPeer(hub, conn, &Server{
-		Addr:   *serverAddr,
-		URL:    URL,
-		Secret: hub.config.Server.Secret,
+		Addr:               *serverAddr,
+		Secret:             hub.config.sc.Secret,
+		AdvertiseClientURL: PeerURL,
+		AdvertiseServerURL: ServerURL,
 	}, r.RemoteAddr)
 	if err != nil {
 		log.Println(err)

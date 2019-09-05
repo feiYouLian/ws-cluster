@@ -91,7 +91,4 @@ func TestNewAddr(t *testing.T) {
 	// 	})
 	// }
 
-	got, _ := NewAddr(AddrPeer, 1888, "abc33@##$1111")
-	fmt.Println(got.String())
-	fmt.Println(got.Type(), got.Len(), got.Domain(), got.Address())
 }

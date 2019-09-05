@@ -1,11 +1,8 @@
 package wire
 
 import (
-	"bytes"
 	"io"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestHeader_Decode(t *testing.T) {
@@ -41,18 +38,4 @@ func TestHeader_Decode(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMessage_encode_decode(t *testing.T) {
-
-	msg, err := MakeEmptyHeaderMessage(MsgTypeChat, &Msgchat{Text: "hello"})
-	assert.NoError(t, err)
-	buf := &bytes.Buffer{}
-	msg.Encode(buf)
-
-	chat := new(Message)
-	chat.Decode(buf)
-
-	assert.Equal(t, MsgTypeChat, chat.Header.Command)
-	assert.Equal(t, "hello", chat.Body.(*Msgchat).Text)
 }

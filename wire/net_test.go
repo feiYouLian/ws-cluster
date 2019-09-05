@@ -1,10 +1,10 @@
 package wire
 
 import (
-	"log"
+	"fmt"
 	"testing"
 )
 
 func TestGetOutboundIP(t *testing.T) {
-	log.Println(GetOutboundIP())
+	fmt.Println(GetOutboundIP().String())
 }

@@ -71,7 +71,7 @@ func Test_sendtoclient(t *testing.T) {
 	testgroup, _ := wire.NewGroupAddr(1, "test")
 	for index := 0; index < sendGroupMsgNum; index++ {
 		sendtoclient(syspeer.Peer, *testgroup)
-		time.Sleep(time.Millisecond * 1)
+		time.Sleep(time.Millisecond * 10)
 	}
 	t2 := time.Now()
 	log.Printf("send message[%v], cost time: %v", sendNum+sendGroupMsgNum, t2.Sub(t1))

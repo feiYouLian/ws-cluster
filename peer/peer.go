@@ -24,7 +24,7 @@ const (
 	defaultPingPeriod = 10 * time.Second
 
 	// Maximum message size allowed from peer.
-	defaultMaxMessageSize = 512
+	defaultMaxMessageSize = 1024
 )
 
 // ErrPeerNotOpen peer has closed, pushmessage failed
@@ -175,7 +175,7 @@ func (p *Peer) inMessageHandler() {
 			if err != nil { // read EOF,no more message
 				break
 			}
-			if p.Addr.Type() == wire.AddrPeer {
+			if p.Addr.Type() == wire.AddrClient {
 				msg.Header.Source = p.Addr // set source
 			}
 

@@ -23,8 +23,8 @@ var (
 const (
 	// AddrVirtual AddrVirtual
 	AddrVirtual = byte(0)
-	// AddrPeer peer address
-	AddrPeer = byte(1)
+	// AddrClient peer address
+	AddrClient = byte(1)
 	// AddrServer is server addr
 	AddrServer = byte(2)
 	// AddrGroup group address
@@ -35,7 +35,7 @@ const (
 
 // AddrMap addr byte to char
 var AddrMap = map[byte]rune{
-	AddrPeer:      'p',
+	AddrClient:    'p',
 	AddrServer:    's',
 	AddrGroup:     'g',
 	AddrBroadcast: 'b',
@@ -43,7 +43,7 @@ var AddrMap = map[byte]rune{
 
 // AddrReMap AddrReMap
 var AddrReMap = map[string]byte{
-	"p": AddrPeer,
+	"p": AddrClient,
 	"s": AddrServer,
 	"g": AddrGroup,
 	"b": AddrBroadcast,
@@ -100,15 +100,15 @@ func NewServerAddr(domain uint32, address string) (*Addr, error) {
 	return NewAddr(AddrServer, domain, DeviceNone, address)
 }
 
-// ParsePeerAddr new a peer address
-func ParsePeerAddr(addr string) (*Addr, error) {
+// ParseClientAddr new a peer address
+func ParseClientAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 5)
 	if len(addrs) != 5 {
 		return nil, ErrInvaildAddress
 	}
 	domain, _ := strconv.Atoi(addrs[2])
 	device, _ := strconv.Atoi(addrs[3])
-	return NewAddr(AddrPeer, uint32(domain), byte(device), addrs[4])
+	return NewAddr(AddrClient, uint32(domain), byte(device), addrs[4])
 }
 
 // ParseAddr ParseAddr

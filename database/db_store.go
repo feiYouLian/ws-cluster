@@ -15,28 +15,28 @@ var (
 	ErrInsertFail = fmt.Errorf("data insert fail")
 )
 
-// MysqMessageStore mysql message store
-type MysqMessageStore struct {
+// DbMessageStore mysql message store
+type DbMessageStore struct {
 	engine *xorm.Engine
 }
 
-// NewMysqlMessageStore new a MysqMessageStore
-func NewMysqlMessageStore(engine *xorm.Engine) *MysqMessageStore {
+// NewDbMessageStore new a DbMessageStore
+func NewDbMessageStore(engine *xorm.Engine) *DbMessageStore {
 	if engine == nil {
-		return &MysqMessageStore{}
+		return &DbMessageStore{}
 	}
-	err := engine.Sync2(new(ChatMsg))
+	err := engine.Sync2(new(ChatMsg), new(GroupMsg))
 	if err != nil {
 		log.Println(err)
 	}
 
-	return &MysqMessageStore{
+	return &DbMessageStore{
 		engine: engine,
 	}
 }
 
 // SaveChatMsg save message to mysql
-func (s *MysqMessageStore) SaveChatMsg(msgs []*ChatMsg) error {
+func (s *DbMessageStore) SaveChatMsg(msgs []*ChatMsg) error {
 	if s.engine == nil {
 		return nil
 	}
@@ -48,7 +48,7 @@ func (s *MysqMessageStore) SaveChatMsg(msgs []*ChatMsg) error {
 }
 
 // SaveGroupMsg SaveGroupMsg
-func (s *MysqMessageStore) SaveGroupMsg(msgs []*GroupMsg) error {
+func (s *DbMessageStore) SaveGroupMsg(msgs []*GroupMsg) error {
 	if s.engine == nil {
 		return nil
 	}
@@ -59,9 +59,10 @@ func (s *MysqMessageStore) SaveGroupMsg(msgs []*GroupMsg) error {
 	return nil
 }
 
-// InitDb init database
-func InitDb(ip string, port int, user, pwd, dbname string) *xorm.Engine {
-	url := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", user, pwd, ip, port, dbname)
+// InitMysqlDb init mysql database
+func InitMysqlDb(source string) *xorm.Engine {
+	url := fmt.Sprintf("%s?charset=utf8&parseTime=True&loc=Local", source)
+	// url := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", user, pwd, ip, port, dbname)
 	engine, err := xorm.NewEngine("mysql", url)
 	if err != nil {
 		log.Println(err)

@@ -14,7 +14,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	// cmap "github.com/orcaman/concurrent-map"
-	"github.com/ws-cluster/config"
 	"github.com/ws-cluster/database"
 	"github.com/ws-cluster/filelog"
 	"github.com/ws-cluster/wire"
@@ -52,15 +51,16 @@ type Packet struct {
 
 // Server 服务器对象
 type Server struct {
-	Addr   wire.Addr // logic address
-	URL    *url.URL
-	Secret string
+	Addr               wire.Addr // logic address
+	AdvertiseClientURL *url.URL
+	AdvertiseServerURL *url.URL
+	Secret             string
 }
 
 // Hub 是一个服务中心，所有 clientPeer
 type Hub struct {
 	upgrader *websocket.Upgrader
-	config   *config.Config
+	config   *Config
 	Server   *Server // self
 	// clientPeers 缓存客户端节点数据
 	clientPeers map[wire.Addr]*ClientPeer
@@ -78,16 +78,16 @@ type Hub struct {
 }
 
 // NewHub 创建一个 Server 对象，并初始化
-func NewHub(cfg *config.Config) (*Hub, error) {
+func NewHub(cfg *Config) (*Hub, error) {
 	var upgrader = &websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
+		ReadBufferSize:  cfg.cpc.MaxMessageSize,
+		WriteBufferSize: cfg.cpc.MaxMessageSize,
 		CheckOrigin: func(r *http.Request) bool {
-			if cfg.Server.Origin == "*" {
+			if cfg.sc.Origins == "*" {
 				return true
 			}
 			rOrigin := r.Header.Get("Origin")
-			if strings.Contains(cfg.Server.Origin, rOrigin) {
+			if strings.Contains(cfg.sc.Origins, rOrigin) {
 				return true
 			}
 			log.Println("refuse", rOrigin)
@@ -96,16 +96,17 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 	}
 
 	messageLogConfig := &filelog.Config{
-		File: cfg.Server.MessageFile,
+		File: cfg.sc.MessageFile,
 		SubFunc: func(msgs []*bytes.Buffer) error {
-			return saveMessagesToDb(cfg.MessageStore, msgs)
+			return saveMessagesToDb(cfg.ms, msgs)
 		},
 	}
 	messageLog, err := filelog.NewFileLog(messageLogConfig)
 	if err != nil {
 		return nil, err
 	}
-	serverAddr, _ := wire.NewServerAddr(uint32(cfg.Server.Domain), cfg.Server.ID)
+	serverAddr, _ := wire.NewServerAddr(0, cfg.sc.ID)
+
 	hub := &Hub{
 		upgrader:        upgrader,
 		config:          cfg,
@@ -119,13 +120,14 @@ func NewHub(cfg *config.Config) (*Hub, error) {
 		messageLog:      messageLog,
 		quit:            make(chan struct{}),
 		Server: &Server{
-			Addr:   *serverAddr,
-			Secret: cfg.Server.Secret,
-			URL:    &url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", wire.GetOutboundIP().String(), cfg.Server.ListenPort), Path: "/server"},
+			Addr:               *serverAddr,
+			Secret:             cfg.sc.Secret,
+			AdvertiseClientURL: cfg.sc.AdvertiseClientURL,
+			AdvertiseServerURL: cfg.sc.AdvertiseServerURL,
 		},
 	}
 
-	go httplisten(hub, &cfg.Server)
+	go httplisten(hub, &cfg.sc)
 
 	log.Printf("server[%v] start up", serverAddr.String())
 
@@ -173,9 +175,7 @@ func (h *Hub) Run() {
 // 与其它服务器节点建立长连接
 func (h *Hub) outPeerHandler() error {
 	log.Println("start outPeerhandler")
-	if h.config.Server.Mode == config.ModeSingle {
-		return nil
-	}
+
 	// servers, err := h.serverCache.GetServers()
 
 	// serverSelf := database.Server{
@@ -285,7 +285,7 @@ func (h *Hub) packetHandler() {
 				message := packet.content.(*wire.Message)
 				header := message.Header
 				h.recordSession(packet.from, header)
-				if packet.from.Type() == wire.AddrServer && header.Source.Type() == wire.AddrPeer { //如果是转发过来的消息，就记录发送者的定位
+				if packet.from.Type() == wire.AddrServer && header.Source.Type() == wire.AddrClient { //如果是转发过来的消息，就记录发送者的定位
 					h.recordLocation(packet.from, message)
 				}
 				if header.Dest == h.Server.Addr { // if dest address is self
@@ -301,9 +301,9 @@ func (h *Hub) packetHandler() {
 }
 
 func (h *Hub) recordSession(from wire.Addr, header *wire.Header) {
-	if header.Source.Type() == wire.AddrPeer {
+	if header.Source.Type() == wire.AddrClient {
 		if peer, has := h.clientPeers[header.Dest]; has {
-			if from.Type() == wire.AddrPeer { // source and dest peer are in same server
+			if from.Type() == wire.AddrClient { // source and dest peer are in same server
 				peer.AddSession(header.Source, h.Server.Addr)
 			} else {
 				peer.AddSession(header.Source, from)
@@ -446,7 +446,7 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, resp chan
 	defer func() {
 		resp <- &response
 	}()
-	if dest.Type() == wire.AddrPeer {
+	if dest.Type() == wire.AddrClient {
 		// 在当前服务器节点中找到了目标客户端
 		if cpeer, ok := h.clientPeers[dest]; ok {
 			cpeer.PushMessage(message, nil) //errchan pass to peer
@@ -468,7 +468,7 @@ func (h *Hub) handleRelayPacket(from wire.Addr, message *wire.Message, resp chan
 		response.Err = ErrPeerNoFound
 	} else {
 		// 如果消息是直接来源于 client。就转发到其它服务器
-		if from.Type() == wire.AddrPeer {
+		if from.Type() == wire.AddrClient {
 			h.broadcast(message)
 		}
 
@@ -560,7 +560,7 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 }
 
 func (h *Hub) responseMessage(from wire.Addr, message *wire.Message) {
-	if from.Type() == wire.AddrPeer {
+	if from.Type() == wire.AddrClient {
 		h.clientPeers[from].PushMessage(message, nil)
 	} else if from.Type() == wire.AddrServer {
 		h.serverPeers[from].PushMessage(message, nil)
@@ -600,7 +600,7 @@ func saveMessagesToDb(messageStore database.MessageStore, bufs []*bytes.Buffer) 
 			continue
 		}
 		body := packet.Body.(*wire.Msgchat)
-		if header.Dest.Type() == wire.AddrPeer {
+		if header.Dest.Type() == wire.AddrClient {
 			dbmsg := &database.ChatMsg{
 				FromDomain: header.Source.Domain(),
 				ToDomain:   header.Dest.Domain(),
