@@ -29,7 +29,6 @@ func NewDbMessageStore(engine *xorm.Engine) *DbMessageStore {
 	if err != nil {
 		log.Println(err)
 	}
-
 	return &DbMessageStore{
 		engine: engine,
 	}

@@ -30,7 +30,7 @@ const (
 	defaultPingPeriod = 10 * time.Second
 
 	// Maximum message size allowed from peer.
-	defaultMaxMessageSize = 512
+	defaultMaxMessageSize = 2048
 )
 
 var (
@@ -78,16 +78,11 @@ type Config struct {
 
 // LoadConfig LoadConfig
 func LoadConfig() (*Config, error) {
-	// cfg, err := ini.Load(defaultConfigFile)
-	// if err != nil {
-	// 	fmt.Printf("Fail to read file: %v", err)
-	// 	return nil, err
-	// }
 	var conf Config
-	// section := cfg.Section("server")
+
+	// confFile := flag.String("conf","","config file,if not ")
 
 	conf.sc = serverConfig{}
-
 	flag.StringVar(&conf.sc.ListenHost, "listen-host", "0.0.0.0:8380", "listen host,format ip:port")
 	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
 	flag.StringVar(&conf.sc.ClientToken, "client-token", "", "token for client")
@@ -113,29 +108,11 @@ func LoadConfig() (*Config, error) {
 	flag.DurationVar(&conf.cpc.PingPeriod, "client-ping-period", defaultWriteWait, "Send pings to client with this period. Must be less than pongWait")
 	flag.DurationVar(&conf.cpc.PongWait, "client-pong-wait", defaultWriteWait, "Time allowed to read the next pong message from the client")
 
-	dbsource := *flag.String("db-source", "", "database source, just support mysql")
+	dbsource := *flag.String("db-source", "", "database source, just support mysql,eg: user:password@tcp(ip:port)/dbname")
 	if dbsource != "" {
 		conf.dc = new(databaseConfig)
 		flag.StringVar(&conf.dc.DbDriver, "db-driver", defaultDbDriver, "database dirver, just support mysql")
 	}
-	// err = section.MapTo(&config.Server)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// config.Server.MessageFile = filepath.Join(dataDir, defaultMessageName)
-
-	// section = cfg.Section("mysql")
-	// config.Mysql = MysqlConfig{}
-	// err = section.MapTo(&config.Mysql)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// section = cfg.Section("peer")
-	// config.Peer = PeerConfig{}
-	// err = section.MapTo(&config.Peer)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	// datadir
 	conf.dataDir = *flag.String("data-dir", defaultDataDir, "data directory")
