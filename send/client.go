@@ -41,7 +41,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			msg := MsgBody{
-				Source: "/p/1/1/sys",
+				Source: "/c/1/1/sys",
 				Dest:   "/g/1/0/fb_score_notify",
 				Type:   1,
 				Text:   "{\"sportId\":1,\"goalTime\":35,\"league\":\"xxx\",\"homeTeam\":\"A\",\"visitingTeam\":\"B\",\"score\":\"2:0\",\"goalTeam\":1}",

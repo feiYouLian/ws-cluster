@@ -54,7 +54,7 @@ type Server struct {
 	Addr               wire.Addr // logic address
 	AdvertiseClientURL *url.URL
 	AdvertiseServerURL *url.URL
-	Secret             string
+	Token              string
 }
 
 // Hub 是一个服务中心，所有 clientPeer
@@ -78,16 +78,16 @@ type Hub struct {
 }
 
 // NewHub 创建一个 Server 对象，并初始化
-func NewHub(cfg *Config) (*Hub, error) {
+func NewHub(conf *Config) (*Hub, error) {
 	var upgrader = &websocket.Upgrader{
-		ReadBufferSize:  cfg.cpc.MaxMessageSize,
-		WriteBufferSize: cfg.cpc.MaxMessageSize,
+		ReadBufferSize:  conf.cpc.MaxMessageSize,
+		WriteBufferSize: conf.cpc.MaxMessageSize,
 		CheckOrigin: func(r *http.Request) bool {
-			if cfg.sc.Origins == "*" {
+			if conf.sc.Origins == "*" {
 				return true
 			}
 			rOrigin := r.Header.Get("Origin")
-			if strings.Contains(cfg.sc.Origins, rOrigin) {
+			if strings.Contains(conf.sc.Origins, rOrigin) {
 				return true
 			}
 			log.Println("refuse", rOrigin)
@@ -95,21 +95,22 @@ func NewHub(cfg *Config) (*Hub, error) {
 		},
 	}
 
-	messageLogConfig := &filelog.Config{
-		File: cfg.sc.MessageFile,
-		SubFunc: func(msgs []*bytes.Buffer) error {
-			return saveMessagesToDb(cfg.ms, msgs)
-		},
+	var messageLog *filelog.FileLog
+	if conf.ms != nil {
+		messageLogConfig := &filelog.Config{
+			File: conf.sc.MessageFile,
+			SubFunc: func(msgs []*bytes.Buffer) error {
+				return saveMessagesToDb(conf.ms, msgs)
+			},
+		}
+		messageLog, _ = filelog.NewFileLog(messageLogConfig)
 	}
-	messageLog, err := filelog.NewFileLog(messageLogConfig)
-	if err != nil {
-		return nil, err
-	}
-	serverAddr, _ := wire.NewServerAddr(0, cfg.sc.ID)
+
+	serverAddr, _ := wire.NewServerAddr(0, conf.sc.ID)
 
 	hub := &Hub{
 		upgrader:        upgrader,
-		config:          cfg,
+		config:          conf,
 		clientPeers:     make(map[wire.Addr]*ClientPeer, 10000),
 		serverPeers:     make(map[wire.Addr]*ServerPeer, 10),
 		location:        make(map[wire.Addr]wire.Addr, 10000),
@@ -121,13 +122,13 @@ func NewHub(cfg *Config) (*Hub, error) {
 		quit:            make(chan struct{}),
 		Server: &Server{
 			Addr:               *serverAddr,
-			Secret:             cfg.sc.Secret,
-			AdvertiseClientURL: cfg.sc.AdvertiseClientURL,
-			AdvertiseServerURL: cfg.sc.AdvertiseServerURL,
+			Token:              conf.sc.ServerToken,
+			AdvertiseClientURL: conf.sc.AdvertiseClientURL,
+			AdvertiseServerURL: conf.sc.AdvertiseServerURL,
 		},
 	}
 
-	go httplisten(hub, &cfg.sc)
+	go httplisten(hub, &conf.sc)
 
 	log.Printf("server[%v] start up", serverAddr.String())
 
@@ -240,7 +241,7 @@ func (h *Hub) packetQueueHandler() {
 				}()
 			}
 
-			if packet.use == useForRelayMessage {
+			if h.messageLog != nil && packet.use == useForRelayMessage {
 				message := packet.content.(*wire.Message)
 				buf := &bytes.Buffer{}
 				message.Encode(buf)

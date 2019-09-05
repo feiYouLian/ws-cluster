@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	hub.RunMain()
+	hub.Main()
 }

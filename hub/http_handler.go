@@ -60,7 +60,7 @@ func handleClientWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.sc.Secret, fmt.Sprintf("%v%v", addr, nonce), digest) {
+	if !checkDigest(hub.config.sc.ClientToken, fmt.Sprintf("%v%v", addr, nonce), digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -126,7 +126,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 校验digest及数据完整性
-	if !checkDigest(hub.config.sc.Secret, addrstr, digest) {
+	if !checkDigest(hub.config.sc.ServerToken, addrstr, digest) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -139,7 +139,7 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	serverPeer, err := bindServerPeer(hub, conn, &Server{
 		Addr:               *serverAddr,
-		Secret:             hub.config.sc.Secret,
+		Token:              hub.config.sc.ServerToken,
 		AdvertiseClientURL: PeerURL,
 		AdvertiseServerURL: ServerURL,
 	}, r.RemoteAddr)

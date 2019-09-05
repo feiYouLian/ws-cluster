@@ -53,7 +53,7 @@ func Test_sendtoclient(t *testing.T) {
 			}
 		}
 	}()
-	sysaddr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, "sys")
+	sysaddr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, "sys")
 
 	syspeer, err := newClientPeer(secret, wshosts[0], *sysaddr, msgchan, connetchan, disconnetchan)
 	if err != nil {
@@ -63,7 +63,7 @@ func Test_sendtoclient(t *testing.T) {
 
 	t1 := time.Now()
 	for index := 0; index < sendNum; index++ {
-		addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index%peerNum))
+		addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index%peerNum))
 		sendtoclient(syspeer.Peer, *addr)
 		// time.Sleep(time.Second)
 	}

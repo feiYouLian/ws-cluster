@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -45,7 +46,8 @@ type serverConfig struct {
 	ListenHost         string
 	AdvertiseClientURL *url.URL
 	AdvertiseServerURL *url.URL
-	Secret             string
+	ClientToken        string
+	ServerToken        string
 	Origins            string
 	MessageFile        string
 }
@@ -87,6 +89,9 @@ func LoadConfig() (*Config, error) {
 	conf.sc = serverConfig{}
 
 	flag.StringVar(&conf.sc.ListenHost, "listen-host", "0.0.0.0:8380", "listen host,format ip:port")
+	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
+	flag.StringVar(&conf.sc.ClientToken, "client-token", "", "token for client")
+	flag.StringVar(&conf.sc.ServerToken, "server-token", "", "token for server")
 
 	clientURL := flag.String("advertise-client-url", "", "the url is to listen on for client traffic")
 	u, err := url.Parse(*clientURL)
@@ -150,6 +155,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Println(conf.sc)
 
 	return &conf, nil
 }

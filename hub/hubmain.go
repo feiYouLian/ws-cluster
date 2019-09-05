@@ -16,8 +16,8 @@ func handleInterrupt(hub *Hub, sc chan os.Signal) {
 	}
 }
 
-// RunMain RunMain
-func RunMain() {
+// Main Run Main
+func Main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	// read config

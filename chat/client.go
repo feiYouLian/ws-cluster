@@ -45,8 +45,9 @@ func newPeer(addr wire.Addr, serverhost, secret string, OnMessage func(message *
 		},
 	})
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
+		log.Println(resp.StatusCode)
 		log.Println("dial:", err)
 		return nil, err
 	}
@@ -95,7 +96,7 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	p.message <- message
 
 	// if message.Header.Command == wire.MsgTypeChat {
-	// 	if message.Header.Dest.Type() == wire.AddrPeer { // peer to peer
+	// 	if message.Header.Dest.Type() == wire.AddrClient { // peer to peer
 	// 		ackmessage := wire.MakeEmptyHeaderMessage(wire.MsgTypeChatResp, &wire.MsgChatResp{
 	// 			State: wire.AckRead,
 	// 		})
@@ -234,7 +235,7 @@ func main() {
 		ws.Add(1)
 		go func(i int) {
 			wshost := wshosts[i%2]
-			addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
+			addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
 			_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
 			if err != nil {
 				log.Println(err)
@@ -243,7 +244,7 @@ func main() {
 		}(index)
 
 		// wshost := wshosts[index%2]
-		// addr, _ := wire.NewAddr(wire.AddrPeer, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
+		// addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
 		// _, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
 		// if err != nil {
 		// 	log.Println(err)

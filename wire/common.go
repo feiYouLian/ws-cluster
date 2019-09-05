@@ -35,7 +35,7 @@ const (
 
 // AddrMap addr byte to char
 var AddrMap = map[byte]rune{
-	AddrClient:    'p',
+	AddrClient:    'c',
 	AddrServer:    's',
 	AddrGroup:     'g',
 	AddrBroadcast: 'b',
@@ -43,7 +43,7 @@ var AddrMap = map[byte]rune{
 
 // AddrReMap AddrReMap
 var AddrReMap = map[string]byte{
-	"p": AddrClient,
+	"c": AddrClient,
 	"s": AddrServer,
 	"g": AddrGroup,
 	"b": AddrBroadcast,

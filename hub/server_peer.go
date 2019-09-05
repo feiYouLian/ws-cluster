@@ -80,7 +80,7 @@ func (p *ServerPeer) connect() error {
 	// 生成加密摘要
 	h := md5.New()
 	io.WriteString(h, host.Addr.String())
-	io.WriteString(h, host.Secret)
+	io.WriteString(h, host.Token)
 	digest := hex.EncodeToString(h.Sum(nil))
 
 	header := http.Header{}
