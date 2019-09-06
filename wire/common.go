@@ -111,6 +111,12 @@ func ParseClientAddr(addr string) (*Addr, error) {
 	return NewAddr(AddrClient, uint32(domain), byte(device), addrs[4])
 }
 
+// ParseCorrectAddr ParseCorrectAddr
+func ParseCorrectAddr(addr string) *Addr {
+	address, _ := ParseAddr(addr)
+	return address
+}
+
 // ParseAddr ParseAddr
 func ParseAddr(addr string) (*Addr, error) {
 	addrs := strings.SplitN(addr, "/", 5)

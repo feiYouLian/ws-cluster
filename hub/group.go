@@ -24,11 +24,11 @@ type Group struct {
 }
 
 // NewGroup NewGroup
-func NewGroup(addr wire.Addr) *Group {
+func NewGroup(addr wire.Addr, buf int) *Group {
 	group := &Group{
 		Addr:    addr,
 		Members: make(map[wire.Addr]*ClientPeer),
-		packet:  make(chan *GroupPacket, 50),
+		packet:  make(chan *GroupPacket, buf),
 		exit:    make(chan struct{}, 1),
 	}
 	go group.loop()

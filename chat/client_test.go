@@ -23,7 +23,7 @@ func Test_sendtoclient(t *testing.T) {
 	totalNum := 0
 	ticker := time.NewTicker(time.Second)
 
-	peerNum := 1
+	peerNum := 0
 	sendNum := peerNum
 	sendGroupMsgNum := 1000
 
@@ -38,7 +38,6 @@ func Test_sendtoclient(t *testing.T) {
 			case message := <-msgchan:
 				if message.Header.AckSeq > 0 {
 					ackNum++
-					continue
 				}
 				totalNum++
 				// log.Println(" header", message.Header.String())
@@ -71,7 +70,7 @@ func Test_sendtoclient(t *testing.T) {
 	testgroup, _ := wire.NewGroupAddr(1, "test")
 	for index := 0; index < sendGroupMsgNum; index++ {
 		sendtoclient(syspeer.Peer, *testgroup)
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond)
 	}
 	t2 := time.Now()
 	log.Printf("send message[%v], cost time: %v", sendNum+sendGroupMsgNum, t2.Sub(t1))

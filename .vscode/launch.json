@@ -11,7 +11,7 @@
             "mode": "auto",
             "program": "${fileDirname}",
             "env": {},
-            "args": ["-advertise-client-url=ws://192.168.0.214:8380/"]
+            "args": ["-advertise-client-url=ws://192.168.0.214:8380/","-server-token=1QS9blUu5pyPCXZgxQI2Hv4SjJn"]
         }
     ]
 }

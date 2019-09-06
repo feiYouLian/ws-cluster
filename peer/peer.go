@@ -153,11 +153,10 @@ func (p *Peer) inMessageHandler() {
 			// }
 			log.Println(p.Addr.String(), err)
 
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseMessageTooBig) &&
-				p.Addr.Type() == wire.AddrServer {
-				continue
-			}
-
+			// if websocket.IsUnexpectedCloseError(err, websocket.CloseMessageTooBig) &&
+			// 	p.Addr.Type() == wire.AddrServer {
+			// 	continue
+			// }
 			break
 		}
 		if messageType == websocket.CloseMessage {

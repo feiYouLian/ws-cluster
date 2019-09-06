@@ -112,12 +112,12 @@ var supgrader = &websocket.Upgrader{
 // 处理来自服务器节点的连接
 func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	addrstr := r.Header.Get("addr")
-	ServerURL, err := url.Parse(r.Header.Get("server_url"))
+	serverURL, err := url.Parse(r.Header.Get("server_url"))
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
 	}
-	PeerURL, err := url.Parse(r.Header.Get("peer_url"))
+	clientURL, err := url.Parse(r.Header.Get("client_url"))
 	if err != nil {
 		handleHTTPErr(w, err)
 		return
@@ -144,8 +144,8 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	serverPeer, err := bindServerPeer(hub, conn, &Server{
 		Addr:               *serverAddr,
 		Token:              hub.config.sc.ServerToken,
-		AdvertiseClientURL: PeerURL,
-		AdvertiseServerURL: ServerURL,
+		AdvertiseClientURL: clientURL,
+		AdvertiseServerURL: serverURL,
 	}, r.RemoteAddr)
 	if err != nil {
 		log.Println(err)
@@ -161,7 +161,6 @@ func handleServerWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		handleHTTPErr(w, err)
 		return
 	}
-
 	log.Printf("server %v connected", serverAddr.String())
 }
 

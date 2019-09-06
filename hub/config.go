@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -36,8 +38,11 @@ const (
 
 var (
 	// configDir = "./"
-	defaultDataDir  = "./data"
-	defaultDbDriver = "mysql"
+	defaultDataDir         = "./data"
+	defaultDbDriver        = "mysql"
+	defaultWebsocketScheme = "ws"
+	defaultListenIP        = "0.0.0.0"
+	defaultListenPort      = 8380
 	// defaultConfigFile   = filepath.Join(configDir, defaultConfigName)
 )
 
@@ -52,6 +57,7 @@ type serverConfig struct {
 	ClusterSeedURL     string
 	Origins            string
 	MessageFile        string
+	GroupBufferSize    int
 }
 
 type peerConfig struct {
@@ -83,11 +89,12 @@ func LoadConfig() (*Config, error) {
 	var conf Config
 
 	conf.sc = serverConfig{}
-	flag.StringVar(&conf.sc.ListenHost, "listen-host", "0.0.0.0:8380", "listen host,format ip:port")
+	flag.StringVar(&conf.sc.ListenHost, "listen-host", fmt.Sprintf("%v:%v", defaultListenIP, defaultListenPort), "listen host,format ip:port")
 	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
 	flag.StringVar(&conf.sc.ClientToken, "client-token", ksuid.New().String(), "token for client")
 	flag.StringVar(&conf.sc.ServerToken, "server-token", ksuid.New().String(), "token for server")
 	flag.StringVar(&conf.sc.ClusterSeedURL, "cluster-seed-url", "", "request a server for downloading a list of servers")
+	flag.IntVar(&conf.sc.GroupBufferSize, "group-buffer-size", 20, "group channal size of relying message")
 
 	var clientURL, serverURL string
 	flag.StringVar(&clientURL, "advertise-client-url", "", "the url is to listen on for client traffic")
@@ -114,6 +121,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	flag.Parse()
+
+	listenPort := strings.Split(conf.sc.ListenHost, ":")[1]
 	var err error
 	if clientURL != "" {
 		conf.sc.AdvertiseClientURL, err = url.Parse(clientURL)
@@ -121,6 +130,8 @@ func LoadConfig() (*Config, error) {
 			return nil, err
 		}
 		log.Println("-advertise-client-url", conf.sc.AdvertiseClientURL.String())
+	} else {
+		conf.sc.AdvertiseClientURL = &url.URL{Scheme: defaultWebsocketScheme, Host: fmt.Sprintf("%v:%v", GetOutboundIP().String(), listenPort)}
 	}
 
 	if serverURL != "" {
@@ -129,6 +140,8 @@ func LoadConfig() (*Config, error) {
 			return nil, err
 		}
 		log.Println("-advertise-server-url", conf.sc.AdvertiseServerURL.String())
+	} else {
+		conf.sc.AdvertiseServerURL = &url.URL{Scheme: defaultWebsocketScheme, Host: fmt.Sprintf("%v:%v", GetOutboundIP().String(), listenPort)}
 	}
 
 	conf.sc.MessageFile = filepath.Join(conf.dataDir, defaultMessageName)
@@ -140,10 +153,10 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	conf.sc.ID, err = BuildServerID(conf.dataDir)
-	if err != nil {
-		return nil, err
-	}
+	conf.sc.ID = fmt.Sprintf("%d", time.Now().Unix())
+	// if err != nil {
+	// 	return nil, err
+	// }
 	log.Println("-client-token", conf.sc.ClientToken)
 	log.Println("-server-token", conf.sc.ServerToken)
 
@@ -164,4 +177,17 @@ func BuildServerID(dataDir string) (string, error) {
 		return "", err
 	}
 	return string(fb), nil
+}
+
+//GetOutboundIP Get preferred outbound ip of this machine
+func GetOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Println(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP
 }

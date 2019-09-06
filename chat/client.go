@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/ws-cluster/wire"
@@ -23,7 +22,7 @@ import (
 )
 
 const (
-	secret = "xxx123456"
+	secret = "123"
 )
 
 func newPeer(addr wire.Addr, serverhost, secret string, OnMessage func(message *wire.Message) error, OnDisconnect func() error) (*peer.Peer, error) {
@@ -152,7 +151,7 @@ func sendtoclient(peer *peer.Peer, to wire.Addr) {
 
 }
 
-var wshosts = []string{"192.168.0.214:8380", "192.168.0.214:8380"}
+var wshosts = []string{"192.168.0.214:8380", "192.168.0.214:8381"}
 
 // var wshosts = []string{"192.168.0.127:8380", "192.168.0.127:8380"}
 
@@ -229,28 +228,28 @@ func main() {
 		}
 	}()
 
-	ws := sync.WaitGroup{}
+	// ws := sync.WaitGroup{}
 
 	for index := 0; index < peerNum; index++ {
-		ws.Add(1)
-		go func(i int) {
-			wshost := wshosts[i%2]
-			addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
-			_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
-			if err != nil {
-				log.Println(err)
-			}
-			ws.Done()
-		}(index)
+		// ws.Add(1)
+		// go func(i int) {
+		// 	wshost := wshosts[i%2]
+		// 	addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", i))
+		// 	_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
+		// 	if err != nil {
+		// 		log.Println(err)
+		// 	}
+		// 	ws.Done()
+		// }(index)
 
-		// wshost := wshosts[index%2]
-		// addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
-		// _, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
-		// if err != nil {
-		// 	log.Println(err)
-		// }
+		wshost := wshosts[index%2]
+		addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index))
+		_, err := newClientPeer(secret, wshost, *addr, msgchan, connetchan, disconnetchan)
+		if err != nil {
+			log.Println(err)
+		}
 	}
-	ws.Wait()
+	// ws.Wait()
 	log.Println("new peer finish")
 	<-quit
 
