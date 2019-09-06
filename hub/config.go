@@ -43,6 +43,7 @@ var (
 	defaultWebsocketScheme = "ws"
 	defaultListenIP        = "0.0.0.0"
 	defaultListenPort      = 8380
+	defaultGroupBufferSize = 10
 	// defaultConfigFile   = filepath.Join(configDir, defaultConfigName)
 )
 
@@ -89,12 +90,13 @@ func LoadConfig() (*Config, error) {
 	var conf Config
 
 	conf.sc = serverConfig{}
+	flag.StringVar(&conf.sc.ID, "server-id", "", "server id")
 	flag.StringVar(&conf.sc.ListenHost, "listen-host", fmt.Sprintf("%v:%v", defaultListenIP, defaultListenPort), "listen host,format ip:port")
 	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
 	flag.StringVar(&conf.sc.ClientToken, "client-token", ksuid.New().String(), "token for client")
 	flag.StringVar(&conf.sc.ServerToken, "server-token", ksuid.New().String(), "token for server")
 	flag.StringVar(&conf.sc.ClusterSeedURL, "cluster-seed-url", "", "request a server for downloading a list of servers")
-	flag.IntVar(&conf.sc.GroupBufferSize, "group-buffer-size", 20, "group channal size of relying message")
+	flag.IntVar(&conf.sc.GroupBufferSize, "group-buffer-size", defaultGroupBufferSize, "group channal size of relying message")
 
 	var clientURL, serverURL string
 	flag.StringVar(&clientURL, "advertise-client-url", "", "the url is to listen on for client traffic")
@@ -113,7 +115,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// datadir
-	conf.dataDir = *flag.String("data-dir", defaultDataDir, "data directory")
+	flag.StringVar(&conf.dataDir, "data-dir", defaultDataDir, "data directory")
 
 	flag.Usage = func() {
 		fmt.Println("Usage of wscluster:")
@@ -153,7 +155,10 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	conf.sc.ID = fmt.Sprintf("%d", time.Now().Unix())
+	if conf.sc.ID == "" {
+		conf.sc.ID = fmt.Sprintf("%d", time.Now().Unix())
+	}
+
 	// if err != nil {
 	// 	return nil, err
 	// }
