@@ -35,6 +35,10 @@ func httplisten(hub *Hub, conf *serverConfig) {
 		httpQueryClientOnlineHandler(hub, w, r)
 	})
 
+	http.HandleFunc("/q/servers", func(w http.ResponseWriter, r *http.Request) {
+		httpQueryServersHandler(hub, w, r)
+	})
+
 	log.Println("listen on ", conf.ListenHost)
 	err := http.ListenAndServe(conf.ListenHost, nil)
 	if err != nil {
@@ -229,7 +233,21 @@ func httpQueryClientOnlineHandler(hub *Hub, w http.ResponseWriter, r *http.Reque
 	resp := <-respchan
 
 	qu := resp.Body.(*wire.MsgQueryClientResp)
-	fmt.Fprint(w, qu.LoginAt)
+	qu.Encode(w)
+}
+
+// 处理 http 过来的消息发送
+func httpQueryServersHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	respchan := make(chan *Resp)
+
+	msg := wire.MakeEmptyHeaderMessage(wire.MsgTypeQueryServers, &wire.MsgQueryServers{})
+	msg.Header.Dest = hub.Server.Addr
+	hub.packetQueue <- &Packet{from: hub.Server.Addr, use: useForRelayMessage, content: msg, resp: respchan}
+
+	resp := <-respchan
+
+	res := resp.Body.(*wire.MsgQueryServersResp)
+	res.Encode(w)
 }
 
 func checkDigest(secret, text, digest string) bool {

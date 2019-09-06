@@ -24,6 +24,8 @@ const (
 	MsgTypeOfflineNotice = uint8(13)
 	// MsgTypeQueryClient MsgTypeQueryClient
 	MsgTypeQueryClient = uint8(15)
+	// MsgTypeQueryServers query servers
+	MsgTypeQueryServers = uint8(17)
 
 	// MsgTypeEmpty MsgTypeEmpty
 	MsgTypeEmpty = uint8(200)
@@ -162,6 +164,8 @@ func MakeEmptyBody(Command uint8) (Protocol, error) {
 		body = &MsgOfflineNotice{}
 	case MsgTypeQueryClient:
 		body = &MsgQueryClient{}
+	case MsgTypeQueryServers:
+		body = &MsgQueryServers{}
 	case MsgTypeEmpty:
 		body = &MsgEmpty{}
 	default:

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,10 +18,9 @@ import (
 // 这个对象用于处理跨服务节点消息收发。
 type ServerPeer struct {
 	*peer.Peer
-	// Addr       wire.Addr
-	URL        *url.URL // connect url
-	IsOut      bool     // be connected server
-	HostServer *Server  // host
+	IsOut      bool    // be connected server
+	HostServer *Server // host
+	Server     *Server // Server
 
 	packet chan<- *Packet
 }
@@ -96,7 +94,7 @@ func (p *ServerPeer) connect() error {
 		HandshakeTimeout: 3 * time.Second,
 	}
 
-	conn, resp, err := dialar.Dial(p.URL.String(), header)
+	conn, resp, err := dialar.Dial(p.Server.AdvertiseServerURL.String(), header)
 	if err != nil {
 		log.Println("dial:", err)
 		return err
@@ -113,7 +111,7 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 	serverPeer := &ServerPeer{
 		// Addr:       server.Addr,
 		HostServer: h.Server,
-		URL:        server.AdvertiseServerURL,
+		Server:     server,
 		IsOut:      true,
 		packet:     h.packetQueue,
 	}
@@ -141,9 +139,8 @@ func newServerPeer(h *Hub, server *Server) (*ServerPeer, error) {
 // bindServerPeer 处理其它服务器节点过来的连接
 func bindServerPeer(h *Hub, conn *websocket.Conn, server *Server, remoteAddr string) (*ServerPeer, error) {
 	serverPeer := &ServerPeer{
-		// Addr:       server.Addr,
 		HostServer: h.Server,
-		URL:        server.AdvertiseServerURL,
+		Server:     server,
 		IsOut:      false,
 		packet:     h.packetQueue,
 	}

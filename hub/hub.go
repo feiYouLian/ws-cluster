@@ -557,6 +557,16 @@ func (h *Hub) handleLogicPacket(from wire.Addr, message *wire.Message, resp chan
 			msgResp.LoginAt = uint32(peer.LoginAt.Unix())
 		}
 		response.Body = msgResp
+	case wire.MsgTypeQueryServers:
+		msgresp := new(wire.MsgQueryServersResp)
+		for _, speer := range h.serverPeers {
+			msgresp.Servers = append(msgresp.Servers, wire.Server{
+				Addr:      speer.Server.Addr.String(),
+				ClientURL: speer.Server.AdvertiseClientURL.String(),
+				ServerURL: speer.Server.AdvertiseServerURL.String(),
+			})
+		}
+		response.Body = msgresp
 	}
 }
 

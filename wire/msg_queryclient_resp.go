@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"encoding/json"
 	"io"
 )
 
@@ -11,8 +12,8 @@ type MsgQueryClientResp struct {
 
 // Decode Decode
 func (m *MsgQueryClientResp) Decode(r io.Reader) error {
-	var err error
-	if m.LoginAt, err = ReadUint32(r); err != nil {
+	dec := json.NewDecoder(r)
+	if err := dec.Decode(&m.LoginAt); err != nil {
 		return err
 	}
 	return nil
@@ -20,8 +21,8 @@ func (m *MsgQueryClientResp) Decode(r io.Reader) error {
 
 // Encode Encode
 func (m *MsgQueryClientResp) Encode(w io.Writer) error {
-	var err error
-	if err = WriteUint32(w, m.LoginAt); err != nil {
+	coder := json.NewEncoder(w)
+	if err := coder.Encode(m.LoginAt); err != nil {
 		return err
 	}
 	return nil

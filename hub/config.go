@@ -87,7 +87,7 @@ func LoadConfig() (*Config, error) {
 	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
 	flag.StringVar(&conf.sc.ClientToken, "client-token", ksuid.New().String(), "token for client")
 	flag.StringVar(&conf.sc.ServerToken, "server-token", ksuid.New().String(), "token for server")
-	flag.StringVar(&conf.sc.ClusterSeedURL, "cluster-seed-url", "", "url  ")
+	flag.StringVar(&conf.sc.ClusterSeedURL, "cluster-seed-url", "", "request a server for downloading a list of servers")
 
 	var clientURL, serverURL string
 	flag.StringVar(&clientURL, "advertise-client-url", "", "the url is to listen on for client traffic")
