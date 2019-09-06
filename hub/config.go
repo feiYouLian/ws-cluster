@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/segmentio/ksuid"
 	"github.com/ws-cluster/database"
 )
 
@@ -48,6 +49,7 @@ type serverConfig struct {
 	AdvertiseServerURL *url.URL
 	ClientToken        string
 	ServerToken        string
+	ClusterSeedURL     string
 	Origins            string
 	MessageFile        string
 }
@@ -80,27 +82,16 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	var conf Config
 
-	// confFile := flag.String("conf","","config file,if not ")
-
 	conf.sc = serverConfig{}
 	flag.StringVar(&conf.sc.ListenHost, "listen-host", "0.0.0.0:8380", "listen host,format ip:port")
 	flag.StringVar(&conf.sc.Origins, "origins", "*", "allowed origins from client")
-	flag.StringVar(&conf.sc.ClientToken, "client-token", "", "token for client")
-	flag.StringVar(&conf.sc.ServerToken, "server-token", "", "token for server")
+	flag.StringVar(&conf.sc.ClientToken, "client-token", ksuid.New().String(), "token for client")
+	flag.StringVar(&conf.sc.ServerToken, "server-token", ksuid.New().String(), "token for server")
+	flag.StringVar(&conf.sc.ClusterSeedURL, "cluster-seed-url", "", "url  ")
 
-	clientURL := flag.String("advertise-client-url", "", "the url is to listen on for client traffic")
-	u, err := url.Parse(*clientURL)
-	if err != nil {
-		return nil, err
-	}
-	conf.sc.AdvertiseClientURL = u
-
-	serverURL := flag.String("advertise-server-url", "", "use for server connecting")
-	u, err = url.Parse(*serverURL)
-	if err != nil {
-		return nil, err
-	}
-	conf.sc.AdvertiseClientURL = u
+	var clientURL, serverURL string
+	flag.StringVar(&clientURL, "advertise-client-url", "", "the url is to listen on for client traffic")
+	flag.StringVar(&serverURL, "advertise-server-url", "", "use for server connecting")
 
 	conf.cpc = peerConfig{}
 	flag.IntVar(&conf.cpc.MaxMessageSize, "client-max-msg-size", defaultMaxMessageSize, "Maximum message size allowed from client.")
@@ -117,7 +108,28 @@ func LoadConfig() (*Config, error) {
 	// datadir
 	conf.dataDir = *flag.String("data-dir", defaultDataDir, "data directory")
 
+	flag.Usage = func() {
+		fmt.Println("Usage of wscluster:")
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
+	var err error
+	if clientURL != "" {
+		conf.sc.AdvertiseClientURL, err = url.Parse(clientURL)
+		if err != nil {
+			return nil, err
+		}
+		log.Println("-advertise-client-url", conf.sc.AdvertiseClientURL.String())
+	}
+
+	if serverURL != "" {
+		conf.sc.AdvertiseServerURL, err = url.Parse(serverURL)
+		if err != nil {
+			return nil, err
+		}
+		log.Println("-advertise-server-url", conf.sc.AdvertiseServerURL.String())
+	}
 
 	conf.sc.MessageFile = filepath.Join(conf.dataDir, defaultMessageName)
 	if _, err := os.Stat(conf.dataDir); err != nil {
@@ -132,7 +144,8 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println(conf.sc)
+	log.Println("-client-token", conf.sc.ClientToken)
+	log.Println("-server-token", conf.sc.ServerToken)
 
 	return &conf, nil
 }

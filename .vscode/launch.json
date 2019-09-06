@@ -11,7 +11,7 @@
             "mode": "auto",
             "program": "${fileDirname}",
             "env": {},
-            "args": []
+            "args": ["-advertise-client-url=ws://192.168.0.214:8380/"]
         }
     ]
 }
