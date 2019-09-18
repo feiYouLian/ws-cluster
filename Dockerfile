@@ -8,4 +8,4 @@ RUN export GOPROXY=https://goproxy.io
 RUN go build -o /app/wscluster $GOPATH/src/github.com/ws-cluster/
 EXPOSE 8380
 
-ENTRYPOINT ["./wscluster"]
+ENV PATH /app:$PATH
