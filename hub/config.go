@@ -108,11 +108,7 @@ func LoadConfig() (*Config, error) {
 	flag.DurationVar(&conf.cpc.PingPeriod, "client-ping-period", defaultWriteWait, "Send pings to client with this period. Must be less than pongWait")
 	flag.DurationVar(&conf.cpc.PongWait, "client-pong-wait", defaultWriteWait, "Time allowed to read the next pong message from the client")
 
-	dbsource := *flag.String("db-source", "", "database source, just support mysql,eg: user:password@tcp(ip:port)/dbname")
-	if dbsource != "" {
-		conf.dc = new(databaseConfig)
-		flag.StringVar(&conf.dc.DbDriver, "db-driver", defaultDbDriver, "database dirver, just support mysql")
-	}
+	dbsource := flag.String("db-source", "", "database source, just support mysql,eg: user:password@tcp(ip:port)/dbname")
 
 	// datadir
 	flag.StringVar(&conf.dataDir, "data-dir", defaultDataDir, "data directory")
@@ -159,12 +155,18 @@ func LoadConfig() (*Config, error) {
 		conf.sc.ID = fmt.Sprintf("%d", time.Now().Unix())
 	}
 
+	if dbsource != nil {
+		conf.dc = new(databaseConfig)
+		flag.StringVar(&conf.dc.DbDriver, "db-driver", defaultDbDriver, "database dirver, just support mysql")
+		conf.dc.DbSource = *dbsource
+	}
+
 	// if err != nil {
 	// 	return nil, err
 	// }
 	log.Println("-client-token", conf.sc.ClientToken)
 	log.Println("-server-token", conf.sc.ServerToken)
-
+	log.Println("-db-source", conf.dc.DbSource)
 	return &conf, nil
 }
 
