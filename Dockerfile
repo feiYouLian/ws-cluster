@@ -4,7 +4,6 @@ WORKDIR /app
 COPY . /app/
 RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 RUN export GO111MODULE=on
-RUN go mod download
 RUN go build -o wscluster
 EXPOSE 8380
 
