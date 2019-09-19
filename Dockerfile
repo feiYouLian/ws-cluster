@@ -1,11 +1,11 @@
 FROM golang:1.12
 
 WORKDIR /app
-COPY . $GOPATH/src/github.com/ws-cluster/
+COPY . /app/
 RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 RUN export GO111MODULE=on
-RUN export GOPROXY=https://goproxy.io
-RUN go build -o /app/wscluster $GOPATH/src/github.com/ws-cluster/
+RUN go mod download
+RUN go build -o wscluster
 EXPOSE 8380
 
 ENV PATH /app:$PATH
