@@ -151,11 +151,8 @@ func sendtoclient(peer *peer.Peer, to wire.Addr) {
 
 }
 
-var wshosts = []string{"192.168.0.214:8380", "192.168.0.214:8381"}
+var wshosts = []string{"127.0.0.1:8380", "127.0.0.1:8380"}
 
-// var wshosts = []string{"192.168.0.127:8380", "192.168.0.127:8380"}
-
-// var wshosts = []string{"tapi.zhiqiu666.com:8098", "192.168.0.188:8380"}
 var peerNum = 1
 var sendMsgNum = 0
 
