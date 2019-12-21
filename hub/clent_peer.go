@@ -43,7 +43,7 @@ func (p *ClientPeer) OnMessage(message *wire.Message) error {
 	resp := <-respchan
 	respMessage := wire.MakeEmptyRespMessage(message.Header, resp.Status)
 	p.PushMessage(respMessage, nil)
-	log.Println("message", message.Header.String(), "resp status:", respMessage.Header.Status)
+	// log.Println("message", message.Header.String(), "resp status:", respMessage.Header.Status)
 
 	return nil
 }

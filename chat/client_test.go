@@ -64,7 +64,7 @@ func Test_sendtoclient(t *testing.T) {
 	for index := 0; index < sendNum; index++ {
 		addr, _ := wire.NewAddr(wire.AddrClient, 0, wire.DevicePhone, fmt.Sprintf("client_%v", index%peerNum))
 		sendtoclient(syspeer.Peer, *addr)
-		// time.Sleep(time.Second)
+		// time.Sleep(time.Millisecond * 10)
 	}
 
 	testgroup, _ := wire.NewGroupAddr(1, "test")
